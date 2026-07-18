@@ -1,0 +1,54 @@
+{
+  "players": [
+    {
+      "player_id": "player_01",
+      "display_name": "Player One",
+      "core_player": true,
+      "active": true,
+      "aliases": [
+        "Player One",
+        "P1"
+      ]
+    },
+    {
+      "player_id": "player_02",
+      "display_name": "Player Two",
+      "core_player": true,
+      "active": true,
+      "aliases": [
+        "Player Two",
+        "P2"
+      ]
+    },
+    {
+      "player_id": "player_03",
+      "display_name": "Player Three",
+      "core_player": true,
+      "active": true,
+      "aliases": [
+        "Player Three",
+        "P3"
+      ]
+    },
+    {
+      "player_id": "player_04",
+      "display_name": "Player Four",
+      "core_player": true,
+      "active": true,
+      "aliases": [
+        "Player Four",
+        "P4"
+      ]
+    }
+  ],
+  "tournaments": [
+    {
+      "tournament_id": "wc_01",
+      "tournament_number": 1,
+      "tournament_date": "2025-01-01",
+      "winner_id": "player_01",
+      "bracket_source": "example",
+      "match_data_available": false
+    }
+  ]
+}
