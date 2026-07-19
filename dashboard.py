@@ -1423,12 +1423,53 @@ def show_tournaments() -> None:
     participants = detail["participants"]
     matches = detail["matches"]
 
+    selected_tournament_number = int(tournament["tournament_number"])
+    winner = tournament.get("winner")
+
+    winner_title_number = sum(
+        row["Winner"] == winner
+        and int(row["WM"].split()[1]) <= selected_tournament_number
+        for row in tournaments
+    )
+
+    previous_tournament = next(
+        (
+            row
+            for row in tournaments
+            if int(row["WM"].split()[1])
+            == selected_tournament_number - 1
+        ),
+        None,
+    )
+
+    defending_champion = (
+        previous_tournament["Winner"]
+        if previous_tournament
+        else None
+    )
+
+    changes = tournament_elo_changes(
+        selected_tournament_number,
+        participants,
+    )
+
+    tournament_recap = narratives.generate_tournament_summary(
+        tournament,
+        participants,
+        matches,
+        changes,
+        winner_title_number=winner_title_number,
+        defending_champion=defending_champion,
+    )
+
     st.header(f"WM {tournament['tournament_number']:02d}")
     summary_cols = st.columns(4)
     summary_cols[0].metric("Winner", tournament["winner"] or "Unknown")
     summary_cols[1].metric("Date", tournament["tournament_date"] or "–")
     summary_cols[2].metric("Participants", len(participants))
     summary_cols[3].metric("Matches", len(matches))
+
+    st.info(tournament_recap)
 
     podium = {row["placement"]: row["player"] for row in participants if row["placement"] in (1, 2, 3)}
     if podium:
@@ -1484,11 +1525,6 @@ def show_tournaments() -> None:
             st.info("No match data is stored for this tournament.")
 
     with tab_elo:
-        changes = tournament_elo_changes(
-            int(tournament["tournament_number"]),
-            participants,
-        )
-
         if changes:
             biggest_gain = changes[0]
             biggest_loss = changes[-1]
