@@ -1629,6 +1629,7 @@ def main() -> None:
 
     st.sidebar.divider()
     st.sidebar.caption(f"Database: `{DB_PATH.name}`")
+    st.sidebar.caption("Version 0.1.0")
 
     if st.sidebar.button("Reload data"):
         st.cache_data.clear()
