@@ -385,7 +385,7 @@ def load_tournaments() -> list[dict[str, Any]]:
             "Winner": row["winner"] or "Unknown",
             "Participants": row["participants"] or 0,
             "Matches": row["matches"] or 0,
-            "Matchdaten": "Yes" if row["match_data_available"] else "No",
+            "Match data": "Yes" if row["match_data_available"] else "No",
         }
         for row in rows
     ]
@@ -613,7 +613,7 @@ def show_h2h_drilldown(
         score_text = last["score"] or "–"
         st.info(
             f"**{last['tournament']} · {round_text}** — "
-            f"{last['winner'] or 'Unknown winner'} gewann {score_text}."
+            f"{last['winner'] or 'Unknown winner'} won {score_text}."
         )
 
     if h2h["history"]:
@@ -881,7 +881,7 @@ def show_player_page(include_inactive: bool) -> None:
         if best_elo_event:
             change = best_elo_event.get("elo_change", 0)
             st.info(
-                f"Biggest Elo jump: **{change:+.1f}** bei "
+                f"Biggest Elo jump: **{change:+.1f}** at "
                 f"**{best_elo_event.get('tournament', 'a tournament')}**."
             )
 
@@ -1149,8 +1149,8 @@ def show_comparison(include_inactive: bool) -> None:
         last = h2h["last_match"]
         score = last["score"] or "Unknown result"
         st.info(
-            f"Letztes Duell: **{last['winner'] or 'No winner'}** gewann "
-            f"bei {last['tournament']} ({score})."
+            f"Last set: **{last['winner'] or 'No winner'}** won "
+            f"at {last['tournament']} ({score})."
         )
     elif not h2h["history"]:
         st.info("These two players have not faced each other yet.")
