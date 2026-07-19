@@ -239,3 +239,282 @@ def generate_player_summary(
             )
 
     return " ".join(sentences)
+
+def _find_final_match(
+    matches: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Returns the last completed knockout match."""
+
+    knockout_matches = [
+        match
+        for match in matches
+        if match.get("stage") == "knockout"
+        and match.get("winner")
+    ]
+
+    if not knockout_matches:
+        return None
+
+    return knockout_matches[-1]
+
+
+def _format_match_score(match: dict[str, Any]) -> str | None:
+    """Formats a match score from the winner's perspective."""
+
+    if not match.get("score_known"):
+        return None
+
+    score_1 = match.get("player_1_score")
+    score_2 = match.get("player_2_score")
+
+    if score_1 is None or score_2 is None:
+        return None
+
+    if match.get("winner") == match.get("player_1"):
+        return f"{score_1}–{score_2}"
+
+    if match.get("winner") == match.get("player_2"):
+        return f"{score_2}–{score_1}"
+
+    return f"{score_1}–{score_2}"
+
+
+def _most_match_wins(
+    matches: list[dict[str, Any]],
+) -> tuple[str | None, int]:
+    """Returns the player with the most completed match wins."""
+
+    wins: dict[str, int] = {}
+
+    for match in matches:
+        winner = match.get("winner")
+        if not winner:
+            continue
+
+        winner = str(winner)
+        wins[winner] = wins.get(winner, 0) + 1
+
+    if not wins:
+        return None, 0
+
+    player, total = max(
+        wins.items(),
+        key=lambda item: (item[1], item[0]),
+    )
+
+    return player, total
+
+
+def _count_close_sets(
+    matches: list[dict[str, Any]],
+) -> int:
+    """Counts sets decided by a single game."""
+
+    close_sets = 0
+
+    for match in matches:
+        if not match.get("score_known"):
+            continue
+
+        score_1 = match.get("player_1_score")
+        score_2 = match.get("player_2_score")
+
+        if score_1 is None or score_2 is None:
+            continue
+
+        if abs(int(score_1) - int(score_2)) == 1:
+            close_sets += 1
+
+    return close_sets
+
+
+def _largest_elo_upset(
+    matches: list[dict[str, Any]],
+    elo_changes: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """
+    Finds the largest win by a player with a lower pre-tournament Elo.
+
+    Elo ratings from before the tournament are used, rather than ratings
+    recalculated after every individual set.
+    """
+
+    elo_before = {
+        str(row["Players"]): float(row["Elo Before"])
+        for row in elo_changes
+    }
+
+    biggest_upset: dict[str, Any] | None = None
+
+    for match in matches:
+        winner = match.get("winner")
+        player_1 = match.get("player_1")
+        player_2 = match.get("player_2")
+
+        if not winner or not player_1 or not player_2:
+            continue
+
+        loser = player_2 if winner == player_1 else player_1
+
+        winner_elo = elo_before.get(str(winner))
+        loser_elo = elo_before.get(str(loser))
+
+        if winner_elo is None or loser_elo is None:
+            continue
+
+        elo_gap = loser_elo - winner_elo
+
+        if elo_gap <= 0:
+            continue
+
+        if biggest_upset is None or elo_gap > biggest_upset["elo_gap"]:
+            biggest_upset = {
+                "winner": str(winner),
+                "loser": str(loser),
+                "elo_gap": elo_gap,
+                "tournament": match.get("tournament"),
+            }
+
+    return biggest_upset
+
+
+def generate_tournament_summary(
+    tournament: dict[str, Any],
+    participants: list[dict[str, Any]],
+    matches: list[dict[str, Any]],
+    elo_changes: list[dict[str, Any]],
+    *,
+    winner_title_number: int | None = None,
+    defending_champion: str | None = None,
+) -> str:
+    """Generates a rule-based recap for one tournament."""
+
+    tournament_number = int(tournament["tournament_number"])
+    tournament_name = f"WM {tournament_number:02d}"
+    winner = str(tournament.get("winner") or "An unknown player")
+
+    podium = {
+        int(row["placement"]): str(row["player"])
+        for row in participants
+        if row.get("placement") in (1, 2, 3)
+    }
+
+    runner_up = podium.get(2)
+    third_place = podium.get(3)
+
+    final_match = _find_final_match(matches)
+    final_score = (
+        _format_match_score(final_match)
+        if final_match is not None
+        else None
+    )
+
+    # Opening sentence
+    if runner_up and final_score:
+        opening = (
+            f"{winner} won {tournament_name} by defeating "
+            f"{runner_up} {final_score} in the final."
+        )
+    elif runner_up:
+        opening = (
+            f"{winner} won {tournament_name}, with {runner_up} "
+            f"finishing as runner-up."
+        )
+    else:
+        opening = f"{winner} won {tournament_name}."
+
+    sentences = [opening]
+
+    # Title context
+    if defending_champion == winner:
+        sentences.append(f"{winner} successfully defended the title.")
+    elif winner_title_number == 1:
+        sentences.append(
+            f"It was the first World Championship title of "
+            f"{winner}'s career."
+        )
+    elif winner_title_number and winner_title_number > 1:
+        sentences.append(
+            f"The victory marked {winner}'s "
+            f"{winner_title_number}th World Championship title."
+        )
+
+    # Main tournament performance
+    wins_leader, wins_total = _most_match_wins(matches)
+
+    if wins_leader and wins_total:
+        if wins_leader == winner:
+            sentences.append(
+                f"The champion also recorded the most match wins "
+                f"with {wins_total}."
+            )
+        else:
+            sentences.append(
+                f"{wins_leader} recorded the most match wins "
+                f"with {wins_total}."
+            )
+
+    # Elo and upset storylines
+    if elo_changes:
+        biggest_gain = max(
+            elo_changes,
+            key=lambda row: float(row["Elo Change"]),
+        )
+        biggest_loss = min(
+            elo_changes,
+            key=lambda row: float(row["Elo Change"]),
+        )
+
+        gain = float(biggest_gain["Elo Change"])
+        loss = float(biggest_loss["Elo Change"])
+
+        if gain > 0:
+            elo_sentence = (
+                f"{biggest_gain['Players']} made the biggest Elo gain "
+                f"at {gain:+.1f}"
+            )
+
+            if loss < 0:
+                elo_sentence += (
+                    f", while {biggest_loss['Players']} had the largest "
+                    f"drop at {loss:+.1f}."
+                )
+            else:
+                elo_sentence += "."
+
+            sentences.append(elo_sentence)
+
+    biggest_upset = _largest_elo_upset(matches, elo_changes)
+
+    if biggest_upset:
+        sentences.append(
+            f"The biggest Elo upset came when "
+            f"{biggest_upset['winner']} defeated "
+            f"{biggest_upset['loser']} despite a "
+            f"{biggest_upset['elo_gap']:.1f}-point rating gap."
+        )
+
+    # General tournament context
+    close_sets = _count_close_sets(matches)
+    participant_count = len(participants)
+    match_count = len(matches)
+
+    context_parts = [
+        f"{participant_count} players competed across "
+        f"{match_count} recorded matches"
+    ]
+
+    if close_sets:
+        set_word = "set" if close_sets == 1 else "sets"
+        context_parts.append(
+            f"{close_sets} {set_word} decided by a single game"
+        )
+
+    if third_place:
+        context_parts.append(f"{third_place} finishing third")
+
+    context_sentence = ", with ".join(context_parts) + "."
+    sentences.append(context_sentence)
+
+    # Keep the recap readable rather than listing every statistic.
+    return " ".join(sentences[:4])
