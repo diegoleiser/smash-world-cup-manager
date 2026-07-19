@@ -739,6 +739,14 @@ def show_player_page(include_inactive: bool) -> None:
 
     insights = load_player_insights(player_id)
 
+    career_summary = narratives.generate_player_summary(
+        profile,
+        insights,
+        current_rank,
+    )
+
+    st.info(career_summary)
+
     tab_elo, tab_rank, tab_history, tab_insights = st.tabs(
         ["Elo History", "Ranking History", "Tournament History", "Insights"]
     )
