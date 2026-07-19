@@ -1466,6 +1466,10 @@ def show_tournaments() -> None:
         participants,
     )
 
+    tournament_milestones = load_tournament_milestones(
+        selected_tournament_number,
+    )
+
     tournament_recap = narratives.generate_tournament_summary(
         tournament,
         participants,
@@ -1473,11 +1477,8 @@ def show_tournaments() -> None:
         changes,
         winner_title_number=winner_title_number,
         defending_champion=defending_champion,
+        milestones=tournament_milestones,
     )
-
-    tournament_milestones = load_tournament_milestones(
-    selected_tournament_number,
-)
 
     st.header(f"WM {tournament['tournament_number']:02d}")
     summary_cols = st.columns(4)
@@ -1487,14 +1488,6 @@ def show_tournaments() -> None:
     summary_cols[3].metric("Matches", len(matches))
 
     st.info(tournament_recap)
-
-    if tournament_milestones:
-        with st.expander(
-            f"Milestones ({len(tournament_milestones)})",
-            expanded=True,
-        ):
-            for milestone in tournament_milestones:
-                st.markdown(f"- {milestone}")
 
     podium = {row["placement"]: row["player"] for row in participants if row["placement"] in (1, 2, 3)}
     if podium:
