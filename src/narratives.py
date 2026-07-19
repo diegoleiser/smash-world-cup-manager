@@ -377,6 +377,52 @@ def _largest_elo_upset(
 
     return biggest_upset
 
+def _select_milestone(
+    milestones: list[str] | None,
+) -> str | None:
+    """Selects the most important milestone for a tournament recap."""
+
+    if not milestones:
+        return None
+
+    priority_rules = [
+        ("first World Championship title", 100),
+        ("50 recorded set wins", 90),
+        ("25 recorded set wins", 80),
+        ("new career-best placement", 70),
+        ("new career-high Elo", 60),
+        ("tenth tournament appearance", 50),
+        ("10 World Championship titles", 45),
+        ("5 World Championship titles", 40),
+        ("10 recorded set wins", 30),
+        ("fifth tournament appearance", 20),
+    ]
+
+    def priority(text: str) -> int:
+        for phrase, score in priority_rules:
+            if phrase in text:
+                return score
+        return 0
+
+    return max(
+        milestones,
+        key=priority,
+        default=None,
+    )
+
+def _ordinal(number: int) -> str:
+    """Formats an integer as an English ordinal number."""
+
+    if 10 <= number % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {
+            1: "st",
+            2: "nd",
+            3: "rd",
+        }.get(number % 10, "th")
+
+    return f"{number}{suffix}"
 
 def generate_tournament_summary(
     tournament: dict[str, Any],
@@ -386,6 +432,7 @@ def generate_tournament_summary(
     *,
     winner_title_number: int | None = None,
     defending_champion: str | None = None,
+    milestones: list[str] | None = None,
 ) -> str:
     """Generates a rule-based recap for one tournament."""
 
@@ -436,7 +483,7 @@ def generate_tournament_summary(
     elif winner_title_number and winner_title_number > 1:
         sentences.append(
             f"The victory marked {winner}'s "
-            f"{winner_title_number}th World Championship title."
+            f"{_ordinal(winner_title_number)} World Championship title."
         )
 
     # Main tournament performance
@@ -516,5 +563,30 @@ def generate_tournament_summary(
     context_sentence = ", with ".join(context_parts) + "."
     sentences.append(context_sentence)
 
-    # Keep the recap readable rather than listing every statistic.
-    return " ".join(sentences[:4])
+    selected_milestone = _select_milestone(milestones)
+
+    selected_sentences = sentences[:3]
+
+    if selected_milestone:
+        # Avoid repeating the title milestone when the recap already contains
+        # a dedicated title sentence.
+        title_already_mentioned = (
+            "World Championship title" in selected_milestone
+            and any(
+                "World Championship title" in sentence
+                for sentence in selected_sentences
+            )
+        )
+
+        if not title_already_mentioned:
+            selected_sentences.append(selected_milestone)
+
+    if len(selected_sentences) < 4:
+        for sentence in sentences[3:]:
+            if sentence not in selected_sentences:
+                selected_sentences.append(sentence)
+
+            if len(selected_sentences) == 4:
+                break
+
+    return " ".join(selected_sentences)
