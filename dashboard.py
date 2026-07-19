@@ -20,12 +20,14 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 try:
+    import milestones
     import narratives
     import smash_statistics as stats
 except ImportError as exc:
     raise ImportError(
-        "Required files were not found in src/. "
-        "Make sure smash_statistics.py and narratives.py exist."
+    "Required files were not found in src/. "
+    "Make sure smash_statistics.py, narratives.py, "
+    "and milestones.py exist."
     ) from exc
 
 
@@ -390,6 +392,17 @@ def load_tournaments() -> list[dict[str, Any]]:
         }
         for row in rows
     ]
+
+@st.cache_data
+def load_tournament_milestones(
+    tournament_number: int,
+) -> list[str]:
+    """Loads milestones reached at a tournament."""
+
+    return milestones.detect_tournament_milestones(
+        DB_PATH,
+        tournament_number,
+    )
 
 
 def format_percent(value: float | None) -> str:
@@ -1462,6 +1475,10 @@ def show_tournaments() -> None:
         defending_champion=defending_champion,
     )
 
+    tournament_milestones = load_tournament_milestones(
+    selected_tournament_number,
+)
+
     st.header(f"WM {tournament['tournament_number']:02d}")
     summary_cols = st.columns(4)
     summary_cols[0].metric("Winner", tournament["winner"] or "Unknown")
@@ -1470,6 +1487,14 @@ def show_tournaments() -> None:
     summary_cols[3].metric("Matches", len(matches))
 
     st.info(tournament_recap)
+
+    if tournament_milestones:
+        with st.expander(
+            f"Milestones ({len(tournament_milestones)})",
+            expanded=True,
+        ):
+            for milestone in tournament_milestones:
+                st.markdown(f"- {milestone}")
 
     podium = {row["placement"]: row["player"] for row in participants if row["placement"] in (1, 2, 3)}
     if podium:
