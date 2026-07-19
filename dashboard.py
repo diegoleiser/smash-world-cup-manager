@@ -20,11 +20,12 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 try:
+    import narratives
     import smash_statistics as stats
 except ImportError as exc:
     raise ImportError(
-        "src/smash_statistics.py was not found. "
-        "Place dashboard.py in the project root directory."
+        "Required files were not found in src/. "
+        "Make sure smash_statistics.py and narratives.py exist."
     ) from exc
 
 
@@ -1144,6 +1145,9 @@ def show_comparison(include_inactive: bool) -> None:
         f"Games {right_name}",
         h2h["player_b"]["games_won"],
     )
+
+    rivalry_summary = narratives.generate_rivalry_summary(h2h)
+    st.info(rivalry_summary)
 
     if h2h["last_match"]:
         last = h2h["last_match"]
