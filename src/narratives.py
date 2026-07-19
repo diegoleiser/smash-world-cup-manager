@@ -160,3 +160,82 @@ def generate_rivalry_summary(h2h: dict[str, Any]) -> str:
             )
 
     return overall
+
+
+def _title_phrase(titles: int) -> str:
+    """Returns a natural-language championship phrase."""
+
+    if titles <= 0:
+        return "is still searching for a first championship"
+    if titles == 1:
+        return "is a World Championship winner"
+    if titles == 2:
+        return "is a two-time World Champion"
+
+    return f"is a {titles}-time World Champion"
+
+
+def generate_player_summary(
+    profile: dict[str, Any],
+    insights: dict[str, Any],
+    current_rank: int | None,
+) -> str:
+    """
+    Generates a short rule-based career summary for a player.
+
+    The input is expected to match the data returned by
+    ``smash_statistics.get_player_stats()`` and the dashboard's
+    ``load_player_insights()`` helper.
+    """
+
+    player = str(profile["player"])
+    titles = int(profile.get("titles", 0))
+    appearances = int(profile.get("appearances", 0))
+    current_elo = float(profile.get("current_elo", 1000.0))
+    decided_matches = int(profile.get("decided_matches", 0))
+    winrate = profile.get("winrate")
+    best_elo_event = insights.get("best_elo_event")
+
+    appearance_word = "appearance" if appearances == 1 else "appearances"
+
+    opening = (
+        f"{player} {_title_phrase(titles)} with "
+        f"{appearances} tournament {appearance_word}."
+    )
+
+    if decided_matches == 0:
+        return (
+            f"{opening} No completed match data is available "
+            f"for this player yet."
+        )
+
+    if current_rank is not None:
+        ranking_sentence = (
+            f"{player} currently ranks #{current_rank} with an Elo rating "
+            f"of {current_elo:.1f}"
+        )
+    else:
+        ranking_sentence = (
+            f"{player} currently has an Elo rating of {current_elo:.1f}"
+        )
+
+    if winrate is not None:
+        ranking_sentence += (
+            f" and has won {float(winrate):.1f}% of recorded sets."
+        )
+    else:
+        ranking_sentence += "."
+
+    sentences = [opening, ranking_sentence]
+
+    if best_elo_event:
+        tournament = best_elo_event.get("tournament")
+        change = float(best_elo_event.get("elo_change", 0.0))
+
+        if tournament and change > 0:
+            sentences.append(
+                f"The biggest Elo gain came at {tournament}, "
+                f"with an increase of {change:.1f} points."
+            )
+
+    return " ".join(sentences)
