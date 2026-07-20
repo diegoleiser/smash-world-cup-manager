@@ -162,81 +162,137 @@ def generate_rivalry_summary(h2h: dict[str, Any]) -> str:
     return overall
 
 
-def _title_phrase(titles: int) -> str:
-    """Returns a natural-language championship phrase."""
-
-    if titles <= 0:
-        return "is still searching for a first championship"
-    if titles == 1:
-        return "is a World Championship winner"
-    if titles == 2:
-        return "is a two-time World Champion"
-
-    return f"is a {titles}-time World Champion"
-
-
 def generate_player_summary(
     profile: dict[str, Any],
     insights: dict[str, Any],
     current_rank: int | None,
 ) -> str:
-    """
-    Generates a short rule-based career summary for a player.
-
-    The input is expected to match the data returned by
-    ``smash_statistics.get_player_stats()`` and the dashboard's
-    ``load_player_insights()`` helper.
-    """
+    """Generates a varied rule-based career summary for a player."""
 
     player = str(profile["player"])
     titles = int(profile.get("titles", 0))
     appearances = int(profile.get("appearances", 0))
     current_elo = float(profile.get("current_elo", 1000.0))
+    peak_elo = float(profile.get("peak_elo", current_elo))
     decided_matches = int(profile.get("decided_matches", 0))
     winrate = profile.get("winrate")
+    best_result = profile.get("best_result")
+
+    nemesis = insights.get("nemesis")
+    longest_win_streak = int(
+        insights.get("longest_win_streak", 0)
+    )
     best_elo_event = insights.get("best_elo_event")
 
-    appearance_word = "appearance" if appearances == 1 else "appearances"
-
-    opening = (
-        f"{player} {_title_phrase(titles)} with "
-        f"{appearances} tournament {appearance_word}."
+    appearance_word = (
+        "appearance"
+        if appearances == 1
+        else "appearances"
     )
+
+    # Career introduction
+    if appearances <= 1 and titles == 0:
+        opening = (
+            f"{player} has made {appearances} recorded tournament "
+            f"{appearance_word} so far."
+        )
+    elif titles == 0:
+        opening = (
+            f"{player} has appeared in {appearances} tournaments "
+            f"and is still chasing a first championship."
+        )
+    elif titles == 1:
+        opening = (
+            f"{player} has one World Championship title across "
+            f"{appearances} tournament {appearance_word}."
+        )
+    elif titles == 2:
+        opening = (
+            f"{player} is a two-time World Champion with "
+            f"{appearances} tournament appearances."
+        )
+    else:
+        opening = (
+            f"{player} is one of the archive's most successful players, "
+            f"with {titles} World Championship titles across "
+            f"{appearances} appearances."
+        )
 
     if decided_matches == 0:
         return (
-            f"{opening} No completed match data is available "
+            f"{opening} No completed set data is available "
             f"for this player yet."
         )
 
-    if current_rank is not None:
-        ranking_sentence = (
-            f"{player} currently ranks #{current_rank} with an Elo rating "
+    # Current performance
+    if current_rank == 1:
+        performance = (
+            f"They currently lead the Elo ranking with a rating "
+            f"of {current_elo:.1f}"
+        )
+    elif current_rank is not None:
+        performance = (
+            f"They currently rank #{current_rank} with an Elo rating "
             f"of {current_elo:.1f}"
         )
     else:
-        ranking_sentence = (
-            f"{player} currently has an Elo rating of {current_elo:.1f}"
+        performance = (
+            f"Their current Elo rating stands at {current_elo:.1f}"
         )
 
     if winrate is not None:
-        ranking_sentence += (
-            f" and has won {float(winrate):.1f}% of recorded sets."
+        performance += (
+            f" and have won {float(winrate):.1f}% of recorded sets."
         )
     else:
-        ranking_sentence += "."
+        performance += "."
 
-    sentences = [opening, ranking_sentence]
+    # Select one personal storyline.
+    storyline: str | None = None
 
-    if best_elo_event:
+    if longest_win_streak >= 4:
+        storyline = (
+            f"Their longest winning streak stands at "
+            f"{longest_win_streak} sets."
+        )
+
+    elif (
+        nemesis
+        and int(nemesis.get("matches", 0)) >= 3
+        and float(nemesis.get("winrate", 100.0)) < 50.0
+    ):
+        storyline = (
+            f"Their toughest recorded opponent has been "
+            f"{nemesis['opponent']}, against whom they hold a "
+            f"{nemesis['wins']}–{nemesis['losses']} record."
+        )
+
+    elif best_elo_event:
         tournament = best_elo_event.get("tournament")
         change = float(best_elo_event.get("elo_change", 0.0))
 
         if tournament and change > 0:
-            sentences.append(
-                f"The biggest Elo gain came at {tournament}, "
+            storyline = (
+                f"Their biggest Elo gain came at {tournament}, "
                 f"with an increase of {change:.1f} points."
             )
+
+    if storyline is None and peak_elo > current_elo:
+        storyline = (
+            f"Their career-high Elo rating is {peak_elo:.1f}."
+        )
+
+    if storyline is None and best_result is not None:
+        placement = int(best_result)
+        storyline = (
+            f"Their best tournament finish is "
+            f"{_ordinal(placement)} place."
+        )
+
+    sentences = [opening, performance]
+
+    if storyline:
+        sentences.append(storyline)
 
     return " ".join(sentences)
 
