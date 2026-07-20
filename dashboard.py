@@ -23,11 +23,12 @@ try:
     import milestones
     import narratives
     import smash_statistics as stats
+    import tournament_manager as tournament_manager
 except ImportError as exc:
     raise ImportError(
-    "Required files were not found in src/. "
-    "Make sure smash_statistics.py, narratives.py, "
-    "and milestones.py exist."
+        "Required files were not found in src/. "
+        "Make sure smash_statistics.py, narratives.py, milestones.py, "
+        "and tournament_manager.py exist."
     ) from exc
 
 
@@ -682,6 +683,21 @@ def load_database_quality() -> dict[str, Any]:
         "score_rate": score_rate,
     }
 
+@st.cache_data
+def load_tournament_drafts() -> list[dict[str, Any]]:
+    """Loads all active tournament drafts."""
+
+    return tournament_manager.list_drafts(DB_PATH)
+
+
+@st.cache_data
+def load_tournament_draft(draft_id: str) -> dict[str, Any]:
+    """Loads one tournament draft with its participants."""
+
+    return tournament_manager.get_draft(
+        DB_PATH,
+        draft_id,
+    )
 
 def show_home(include_inactive: bool) -> None:
     st.title("🎮 Smash World Championship")
@@ -1919,6 +1935,444 @@ def show_tournaments() -> None:
         )
         st.altair_chart(chart, use_container_width=True)
 
+def show_tournament_manager() -> None:
+    """Creates and manages tournament drafts."""
+
+    st.title("🛠 Tournament Manager")
+    st.caption(
+        "Create tournament drafts, select participants, and prepare "
+        "the tournament structure."
+    )
+
+    st.subheader("Create Tournament Draft")
+
+    existing_tournaments = load_tournaments()
+    existing_numbers = [
+        int(row["WM"].split()[1])
+        for row in existing_tournaments
+    ]
+
+    existing_drafts = load_tournament_drafts()
+    draft_numbers = [
+        int(draft["tournament_number"])
+        for draft in existing_drafts
+    ]
+
+    highest_number = max(
+        existing_numbers + draft_numbers,
+        default=0,
+    )
+    suggested_number = highest_number + 1
+
+    format_label = st.radio(
+        "Tournament format",
+        options=[
+            "Group Stage → Double Elimination",
+            "Double Elimination Only",
+        ],
+        key="new_draft_format",
+    )
+
+    if format_label == "Group Stage → Double Elimination":
+        format_type = tournament_manager.FORMAT_GROUP_STAGE
+
+        entry_label = st.radio(
+            "Bracket entry",
+            options=[
+                "All players start in Winners Bracket",
+                "Lower seeds start in Losers Bracket",
+            ],
+            key="new_draft_entry_mode",
+        )
+
+        if entry_label == "Lower seeds start in Losers Bracket":
+            bracket_entry_mode = (
+                tournament_manager.ENTRY_SPLIT_BY_GROUP_SEED
+            )
+        else:
+            bracket_entry_mode = (
+                tournament_manager.ENTRY_ALL_WINNERS
+            )
+
+    else:
+        format_type = tournament_manager.FORMAT_DOUBLE_ELIMINATION
+        bracket_entry_mode = tournament_manager.ENTRY_ALL_WINNERS
+
+        st.info(
+            "All players start in the Winners Bracket "
+            "in a double-elimination-only tournament."
+        )
+
+    with st.form("create_tournament_draft"):
+        tournament_number = st.number_input(
+            "Tournament number",
+            min_value=1,
+            value=suggested_number,
+            step=1,
+        )
+
+        tournament_date = st.date_input(
+            "Tournament date",
+            value=None,
+        )
+
+        create_submitted = st.form_submit_button(
+            "Create Draft",
+            type="primary",
+        )
+
+    if create_submitted:
+        date_text = (
+            tournament_date.isoformat()
+            if tournament_date is not None
+            else None
+        )
+
+        try:
+            tournament_manager.create_draft(
+                DB_PATH,
+                tournament_number=int(tournament_number),
+                tournament_date=date_text,
+                format_type=format_type,
+                bracket_entry_mode=bracket_entry_mode,
+            )
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            st.cache_data.clear()
+            st.success(
+                f"Draft for WM {int(tournament_number):02d} created."
+            )
+            st.rerun()
+
+    st.divider()
+    st.subheader("Existing Drafts")
+
+    drafts = load_tournament_drafts()
+
+    if not drafts:
+        st.info("No tournament drafts exist yet.")
+        return
+
+    draft_by_label = {
+        (
+            f"WM {int(draft['tournament_number']):02d} · "
+            f"{draft['participant_count']} participants · "
+            f"{draft['status']}"
+        ): str(draft["draft_id"])
+        for draft in drafts
+    }
+
+    selected_label = st.selectbox(
+        "Select draft",
+        options=list(draft_by_label),
+    )
+    selected_draft_id = draft_by_label[selected_label]
+
+    draft = load_tournament_draft(selected_draft_id)
+
+    format_display = {
+        tournament_manager.FORMAT_GROUP_STAGE:
+            "Group Stage → Double Elimination",
+        tournament_manager.FORMAT_DOUBLE_ELIMINATION:
+            "Double Elimination Only",
+    }
+
+    entry_display = {
+        tournament_manager.ENTRY_ALL_WINNERS:
+            "All players start in Winners Bracket",
+        tournament_manager.ENTRY_SPLIT_BY_GROUP_SEED:
+            "Lower seeds may start in Losers Bracket",
+    }
+
+    detail_cols = st.columns(4)
+    detail_cols[0].metric(
+        "Tournament",
+        f"WM {int(draft['tournament_number']):02d}",
+    )
+    detail_cols[1].metric(
+        "Date",
+        draft["tournament_date"] or "Not set",
+    )
+    detail_cols[2].metric(
+        "Format",
+        format_display[draft["format_type"]],
+    )
+    detail_cols[3].metric(
+        "Participants",
+        len(draft["participants"]),
+    )
+
+    st.caption(
+        f"Bracket entry: "
+        f"{entry_display[draft['bracket_entry_mode']]}"
+    )
+
+    st.subheader("Participants")
+
+    all_players = load_players(True)
+    existing_player_ids = {
+        str(participant["player_id"])
+        for participant in draft["participants"]
+    }
+
+    available_players = [
+        player
+        for player in all_players
+        if str(player["player_id"]) not in existing_player_ids
+    ]
+
+    if available_players:
+        player_by_name = {
+            str(player["display_name"]): str(player["player_id"])
+            for player in available_players
+        }
+
+        with st.form("add_draft_participant"):
+            selected_player_name = st.selectbox(
+                "Add player",
+                options=list(player_by_name),
+            )
+
+            if (
+                draft["format_type"]
+                == tournament_manager.FORMAT_DOUBLE_ELIMINATION
+            ):
+                next_seed = len(draft["participants"]) + 1
+
+                st.info(
+                    f"The player will initially be added as seed {next_seed}. "
+                    "The order can be adjusted afterwards."
+                )
+
+                manual_seed = next_seed
+                group_seed = None
+                bracket_seed = next_seed
+                starts_in = "winners"
+
+            else:
+                st.info(
+                    "Seeds will be determined after the group stage."
+                )
+
+                manual_seed = None
+                group_seed = None
+                bracket_seed = None
+                starts_in = "winners"
+
+            add_submitted = st.form_submit_button(
+                "Add Participant"
+            )
+
+        if add_submitted:
+            try:
+                tournament_manager.add_participant(
+                    DB_PATH,
+                    selected_draft_id,
+                    player_by_name[selected_player_name],
+                    manual_seed=(
+                        int(manual_seed)
+                        if manual_seed is not None
+                        else None
+                    ),
+                    group_seed=group_seed,
+                    bracket_seed=bracket_seed,
+                    starts_in=starts_in,
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.cache_data.clear()
+                st.rerun()
+    else:
+        st.info("All existing players are already in this draft.")
+
+    if draft["participants"]:
+        participant_rows = []
+
+        for participant in draft["participants"]:
+            participant_rows.append(
+                {
+                    "Player": participant["player"],
+                    "Seed": (
+                        participant["manual_seed"]
+                        if draft["format_type"]
+                        == tournament_manager.FORMAT_DOUBLE_ELIMINATION
+                        else participant["group_seed"]
+                    ),
+                    "Starts In": participant["starts_in"].title(),
+                }
+            )
+
+        st.dataframe(
+            pd.DataFrame(participant_rows),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
+        if (
+            draft["format_type"]
+            == tournament_manager.FORMAT_DOUBLE_ELIMINATION
+        ):
+            st.subheader("Seeding")
+
+            st.caption(
+                "Players initially receive seeds in the order they are "
+                "added. Use the arrows to fine-tune the order."
+            )
+
+            ordered_participants = sorted(
+                draft["participants"],
+                key=lambda participant: (
+                    participant["manual_seed"]
+                    if participant["manual_seed"] is not None
+                    else 9999,
+                    str(participant["player"]).casefold(),
+                ),
+            )
+
+            order_state_key = (
+                f"participant_order_{selected_draft_id}"
+            )
+
+            stored_ids = [
+                str(participant["player_id"])
+                for participant in ordered_participants
+            ]
+
+            if (
+                order_state_key not in st.session_state
+                or set(st.session_state[order_state_key])
+                != set(stored_ids)
+            ):
+                st.session_state[order_state_key] = stored_ids
+
+            participant_by_id = {
+                str(participant["player_id"]): participant
+                for participant in draft["participants"]
+            }
+
+            current_order = st.session_state[order_state_key]
+
+            for index, player_id in enumerate(current_order):
+                participant = participant_by_id[player_id]
+
+                seed_col, player_col, up_col, down_col = st.columns(
+                    [1, 6, 1, 1]
+                )
+
+                seed_col.markdown(f"**#{index + 1}**")
+                player_col.write(participant["player"])
+
+                move_up = up_col.button(
+                    "↑",
+                    key=(
+                        f"move_up_{selected_draft_id}_"
+                        f"{player_id}"
+                    ),
+                    disabled=index == 0,
+                )
+
+                move_down = down_col.button(
+                    "↓",
+                    key=(
+                        f"move_down_{selected_draft_id}_"
+                        f"{player_id}"
+                    ),
+                    disabled=index == len(current_order) - 1,
+                )
+
+                if move_up:
+                    current_order[index - 1], current_order[index] = (
+                        current_order[index],
+                        current_order[index - 1],
+                    )
+                    st.session_state[order_state_key] = current_order
+                    st.rerun()
+
+                if move_down:
+                    current_order[index], current_order[index + 1] = (
+                        current_order[index + 1],
+                        current_order[index],
+                    )
+                    st.session_state[order_state_key] = current_order
+                    st.rerun()
+
+            if st.button(
+                "Save Seeding Order",
+                type="primary",
+                key=f"save_order_{selected_draft_id}",
+            ):
+                try:
+                    tournament_manager.save_participant_order(
+                        DB_PATH,
+                        selected_draft_id,
+                        list(st.session_state[order_state_key]),
+                    )
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    st.cache_data.clear()
+                    st.session_state[order_state_key] = list(
+                        st.session_state[order_state_key]
+                    )
+                    st.success("Seeding order saved.")
+                    st.rerun()
+
+
+        remove_player_by_name = {
+            str(participant["player"]): str(participant["player_id"])
+            for participant in draft["participants"]
+        }
+
+        remove_name = st.selectbox(
+            "Remove participant",
+            options=list(remove_player_by_name),
+        )
+
+        if st.button(
+            "Remove Selected Participant",
+            type="secondary",
+        ):
+            try:
+                tournament_manager.remove_participant(
+                    DB_PATH,
+                    selected_draft_id,
+                    remove_player_by_name[remove_name],
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.cache_data.clear()
+                st.rerun()
+    else:
+        st.info("No participants have been added yet.")
+
+    st.divider()
+    st.subheader("Danger Zone")
+
+    confirm_delete = st.checkbox(
+        "I understand that this permanently deletes the draft.",
+        key=f"confirm_delete_{selected_draft_id}",
+    )
+
+    if st.button(
+        "Delete Draft",
+        type="primary",
+        disabled=not confirm_delete,
+    ):
+        try:
+            tournament_manager.delete_draft(
+                DB_PATH,
+                selected_draft_id,
+            )
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            st.cache_data.clear()
+            st.success("Tournament draft deleted.")
+            st.rerun()
 
 def main() -> None:
     require_database()
@@ -1926,7 +2380,14 @@ def main() -> None:
     st.sidebar.title("Navigation")
     page = st.sidebar.radio(
         "Section",
-        ["Home", "Players", "Comparison", "H2H-Matrix", "Tournaments"],
+        [
+            "Home",
+            "Players",
+            "Comparison",
+            "H2H-Matrix",
+            "Tournaments",
+            "Tournament Manager",
+        ],
         label_visibility="collapsed",
     )
 
@@ -1951,8 +2412,10 @@ def main() -> None:
         show_comparison(include_inactive)
     elif page == "H2H-Matrix":
         show_h2h_matrix(include_inactive)
-    else:
+    elif page == "Tournaments":
         show_tournaments()
+    elif page == "Tournament Manager":
+        show_tournament_manager()
 
 
 if __name__ == "__main__":
