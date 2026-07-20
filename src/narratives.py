@@ -646,3 +646,262 @@ def generate_tournament_summary(
                 break
 
     return " ".join(selected_sentences)
+
+def generate_tournament_preview(
+    preview_data: dict[str, Any],
+) -> str:
+    """Generates an extended preview for the next tournament."""
+
+    ranking = preview_data.get("ranking", [])
+    titles = preview_data.get("titles", [])
+    recent_form = preview_data.get("recent_form", [])
+    defending_champion = preview_data.get("defending_champion")
+    latest_tournament = preview_data.get("latest_tournament")
+    featured_rivalry = preview_data.get("featured_rivalry")
+
+    if not ranking:
+        return "Not enough ranking data is available for a tournament preview."
+
+    sentences: list[str] = []
+
+    leader = ranking[0]
+    leader_name = str(leader["player"])
+    leader_elo = float(leader["elo"])
+
+    if len(ranking) >= 2:
+        second = ranking[1]
+        second_name = str(second["player"])
+        elo_gap = leader_elo - float(second["elo"])
+
+        if elo_gap <= 15:
+            sentences.append(
+                f"{leader_name} enters the next World Championship as the "
+                f"current Elo leader, but {second_name} trails by only "
+                f"{elo_gap:.1f} points."
+            )
+        elif elo_gap <= 35:
+            sentences.append(
+                f"{leader_name} leads the current Elo ranking, with "
+                f"{second_name} remaining within striking distance at "
+                f"{elo_gap:.1f} points behind."
+            )
+        else:
+            sentences.append(
+                f"{leader_name} enters as the leading contender with an Elo "
+                f"rating of {leader_elo:.1f}, holding a {elo_gap:.1f}-point "
+                f"advantage over {second_name}."
+            )
+    else:
+        sentences.append(
+            f"{leader_name} enters as the current Elo leader with a rating "
+            f"of {leader_elo:.1f}."
+        )
+
+    if defending_champion:
+        if defending_champion == leader_name:
+            sentences.append(
+                f"The Elo leader is also the defending champion after "
+                f"winning {latest_tournament or 'the previous tournament'}."
+            )
+        else:
+            sentences.append(
+                f"{defending_champion} returns as the defending champion "
+                f"after winning {latest_tournament or 'the previous tournament'}."
+            )
+
+    title_contenders = [
+        row
+        for row in titles
+        if int(row.get("titles", 0)) > 0
+    ]
+
+    if title_contenders:
+        title_contenders.sort(
+            key=lambda row: (
+                -int(row["titles"]),
+                str(row["player"]).casefold(),
+            )
+        )
+
+        title_leader = title_contenders[0]
+        top_titles = int(title_leader["titles"])
+
+        tied_leaders = [
+            row
+            for row in title_contenders
+            if int(row["titles"]) == top_titles
+        ]
+
+        if len(tied_leaders) >= 2:
+            names = " and ".join(
+                str(row["player"])
+                for row in tied_leaders[:2]
+            )
+            sentences.append(
+                f"The all-time title race is tied, with {names} holding "
+                f"{top_titles} championships each."
+            )
+        elif len(title_contenders) >= 2:
+            challenger = title_contenders[1]
+            challenger_titles = int(challenger["titles"])
+
+            if top_titles - challenger_titles == 1:
+                sentences.append(
+                    f"{title_leader['player']} leads the all-time title race "
+                    f"with {top_titles} championships, but "
+                    f"{challenger['player']} is only one title behind."
+                )
+            else:
+                sentences.append(
+                    f"{title_leader['player']} remains the most decorated "
+                    f"player in the active field with {top_titles} titles."
+                )
+        else:
+            sentences.append(
+                f"{title_leader['player']} is the only active player with "
+                f"a World Championship title."
+            )
+
+    eligible_form = [
+        row
+        for row in recent_form
+        if int(row.get("matches", 0)) >= 5
+        and row.get("winrate") is not None
+    ]
+
+    if eligible_form:
+        best_form = max(
+            eligible_form,
+            key=lambda row: (
+                float(row["winrate"]),
+                int(row["wins"]),
+            ),
+        )
+
+        best_form_name = str(best_form["player"])
+        best_form_wins = int(best_form["wins"])
+        best_form_matches = int(best_form["matches"])
+
+        if best_form_name == leader_name:
+            sentences.append(
+                f"The favourite also carries the strongest recent set record, "
+                f"winning {best_form_wins} of the last "
+                f"{best_form_matches} matches."
+            )
+        else:
+            sentences.append(
+                f"{best_form_name} arrives in the strongest recent form, "
+                f"having won {best_form_wins} of the last "
+                f"{best_form_matches} recorded sets."
+            )
+
+    positive_trends = [
+        row
+        for row in recent_form
+        if float(row.get("elo_change_last_three", 0.0)) > 0
+    ]
+
+    if positive_trends:
+        strongest_trend = max(
+            positive_trends,
+            key=lambda row: float(row["elo_change_last_three"]),
+        )
+
+        trend_name = str(strongest_trend["player"])
+        trend_gain = float(strongest_trend["elo_change_last_three"])
+
+        already_featured = (
+            eligible_form
+            and trend_name == str(best_form["player"])
+        )
+
+        if not already_featured and trend_gain >= 15:
+            rank_lookup = {
+                str(row["player"]): int(row["rank"])
+                for row in ranking
+            }
+            trend_rank = rank_lookup.get(trend_name)
+
+            if trend_rank is not None and trend_rank > 3:
+                sentences.append(
+                    f"{trend_name} could be the main dark horse after gaining "
+                    f"{trend_gain:.1f} Elo points across the last three "
+                    f"tournaments."
+                )
+            else:
+                sentences.append(
+                    f"{trend_name} has also been trending upward, gaining "
+                    f"{trend_gain:.1f} Elo points across the last three "
+                    f"tournaments."
+                )
+
+    form_by_player = {
+        str(row["player"]): row
+        for row in eligible_form
+    }
+
+    for contender in ranking[:3]:
+        contender_name = str(contender["player"])
+        form = form_by_player.get(contender_name)
+
+        if not form:
+            continue
+
+        winrate = float(form["winrate"])
+        losses = int(form["losses"])
+        matches = int(form["matches"])
+        elo_change = float(form.get("elo_change_last_three", 0.0))
+
+        if winrate < 50.0 and (
+            losses >= 6
+            or elo_change <= -20.0
+        ):
+            sentences.append(
+                f"{contender_name} remains a major contender but enters in "
+                f"poor form, having lost {losses} of the last "
+                f"{matches} recorded sets."
+            )
+            break
+
+    if featured_rivalry:
+        player_a = str(featured_rivalry["player_a"])
+        player_b = str(featured_rivalry["player_b"])
+        wins_a = int(featured_rivalry["wins_a"])
+        wins_b = int(featured_rivalry["wins_b"])
+
+        if wins_a == wins_b:
+            sentences.append(
+                f"One rivalry to watch is {player_a} against {player_b}, "
+                f"with their all-time series tied at {wins_a}–{wins_b}."
+            )
+        elif wins_a > wins_b:
+            sentences.append(
+                f"One rivalry to watch is {player_a} against {player_b}, "
+                f"with {player_a} leading the all-time series "
+                f"{wins_a}–{wins_b}."
+            )
+        else:
+            sentences.append(
+                f"One rivalry to watch is {player_a} against {player_b}, "
+                f"with {player_b} leading the all-time series "
+                f"{wins_b}–{wins_a}."
+            )
+
+    if len(ranking) >= 3:
+        top_three_gap = (
+            float(ranking[0]["elo"])
+            - float(ranking[2]["elo"])
+        )
+
+        if top_three_gap <= 40:
+            sentences.append(
+                "With the leading contenders still closely grouped in Elo, "
+                "the next championship appears wide open."
+            )
+        else:
+            sentences.append(
+                "The chasing field will need a strong performance to close "
+                "the gap to the current frontrunners."
+            )
+
+    return " ".join(sentences)
