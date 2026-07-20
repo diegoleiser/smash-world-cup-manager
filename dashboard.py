@@ -40,6 +40,16 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown(
+    """
+    <style>
+    [data-testid="stMetricDelta"] svg {
+        display: none;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 def require_database() -> None:
     """Stops the app with a clear message if the database is missing."""
@@ -977,6 +987,43 @@ def show_player_page(include_inactive: bool) -> None:
 
     insights = load_player_insights(player_id)
 
+    favorite = insights["favorite"]
+    nemesis = insights["nemesis"]
+
+    insight_cols = st.columns(4)
+
+    insight_cols[0].metric(
+        "Best Matchup",
+        favorite["opponent"] if favorite else "–",
+        (
+            f"{favorite['wins']}:{favorite['losses']} · "
+            f"{favorite['winrate']:.1f} %"
+            if favorite else None
+        ),
+        delta_color="normal",
+    )
+
+    insight_cols[1].metric(
+        "Nemesis",
+        nemesis["opponent"] if nemesis else "–",
+        (
+            f"{nemesis['wins']}:{nemesis['losses']} · "
+            f"{nemesis['winrate']:.1f} %"
+            if nemesis else None
+        ),
+        delta_color="inverse",
+    )
+
+    insight_cols[2].metric(
+        "Longest Win Streak",
+        insights["longest_win_streak"],
+    )
+
+    insight_cols[3].metric(
+        "Longest Losing Streak",
+        insights["longest_loss_streak"],
+    )
+
     career_summary = narratives.generate_player_summary(
         profile,
         insights,
@@ -985,11 +1032,20 @@ def show_player_page(include_inactive: bool) -> None:
 
     st.info(career_summary)
 
-    tab_elo, tab_rank, tab_history, tab_insights = st.tabs(
-        ["Elo History", "Ranking History", "Tournament History", "Insights"]
+    tab_elo, tab_rank, tab_history, tab_opponents = st.tabs(
+        ["Elo History", "Ranking History", "Tournament History", "Opponent Records"]
     )
 
     with tab_elo:
+        best_elo_event = insights["best_elo_event"]
+ 
+        if best_elo_event:
+            change = best_elo_event.get("elo_change", 0)
+            st.info(
+                f"Biggest Elo jump: **{change:+.1f}** at "
+                f"**{best_elo_event.get('tournament', 'a tournament')}**."
+            )
+
         if timeline:
             timeline_df = pd.DataFrame(timeline)
             elo_chart = (
@@ -1092,46 +1148,7 @@ def show_player_page(include_inactive: bool) -> None:
         else:
             st.info("No tournament appearances found.")
 
-    with tab_insights:
-        favorite = insights["favorite"]
-        nemesis = insights["nemesis"]
-        best_elo_event = insights["best_elo_event"]
-
-        insight_cols = st.columns(4)
-        insight_cols[0].metric(
-            "Best Matchup",
-            favorite["opponent"] if favorite else "–",
-            (
-                f"{favorite['wins']}:{favorite['losses']} · "
-                f"{favorite['winrate']:.1f} %"
-                if favorite else None
-            ),
-        )
-        insight_cols[1].metric(
-            "Nemesis",
-            nemesis["opponent"] if nemesis else "–",
-            (
-                f"{nemesis['wins']}:{nemesis['losses']} · "
-                f"{nemesis['winrate']:.1f} %"
-                if nemesis else None
-            ),
-        )
-        insight_cols[2].metric(
-            "Longest Win Streak",
-            insights["longest_win_streak"],
-        )
-        insight_cols[3].metric(
-            "Longest Losing Streak",
-            insights["longest_loss_streak"],
-        )
-
-        if best_elo_event:
-            change = best_elo_event.get("elo_change", 0)
-            st.info(
-                f"Biggest Elo jump: **{change:+.1f}** at "
-                f"**{best_elo_event.get('tournament', 'a tournament')}**."
-            )
-
+    with tab_opponents:
         if insights["opponents"]:
             st.subheader("Records Against All Opponents")
             st.dataframe(
@@ -1153,7 +1170,7 @@ def show_player_page(include_inactive: bool) -> None:
                 },
             )
         else:
-            st.info("No head-to-head matches are available for player insights yet.")
+            st.info("No opponent records are available for this player yet.")
 
 
 
