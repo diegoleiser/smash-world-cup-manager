@@ -233,6 +233,223 @@ def load_player_insights(player_id: str) -> dict[str, Any]:
         ),
     }
 
+@st.cache_data
+def load_tournament_preview_data() -> dict[str, Any]:
+    """Collects ranking, form, title, and rivalry data for the next preview."""
+
+    players = load_players(False)
+    ranking = load_elo_ranking(False)
+
+    if not players or not ranking:
+        return {}
+
+    active_ids = {
+        str(player["player_id"])
+        for player in players
+    }
+    player_names = {
+        str(player["player_id"]): str(player["display_name"])
+        for player in players
+    }
+
+    with stats.connect_db(DB_PATH) as connection:
+        latest_tournament = connection.execute(
+            """
+            SELECT
+                t.tournament_number,
+                winner.display_name AS winner
+            FROM tournaments AS t
+            LEFT JOIN players AS winner
+              ON winner.player_id = t.winner_id
+            ORDER BY t.tournament_number DESC
+            LIMIT 1
+            """
+        ).fetchone()
+
+        title_rows = connection.execute(
+            """
+            SELECT
+                p.player_id,
+                p.display_name AS player,
+                COUNT(t.tournament_id) AS titles
+            FROM players AS p
+            LEFT JOIN tournaments AS t
+              ON t.winner_id = p.player_id
+            WHERE p.active = 1
+            GROUP BY
+                p.player_id,
+                p.display_name
+            ORDER BY
+                titles DESC,
+                p.display_name COLLATE NOCASE
+            """
+        ).fetchall()
+
+        match_rows = connection.execute(
+            """
+            SELECT
+                m.player_1_id,
+                m.player_2_id,
+                m.winner_id,
+                t.tournament_number,
+                t.tournament_date,
+                m.completed_at,
+                m.suggested_play_order,
+                m.match_id
+            FROM matches AS m
+            JOIN tournaments AS t
+              ON t.tournament_id = m.tournament_id
+            WHERE m.winner_id IS NOT NULL
+            ORDER BY
+                t.tournament_date DESC,
+                t.tournament_number DESC,
+                CASE WHEN m.completed_at IS NULL THEN 1 ELSE 0 END,
+                m.completed_at DESC,
+                CASE WHEN m.suggested_play_order IS NULL THEN 1 ELSE 0 END,
+                m.suggested_play_order DESC,
+                m.match_id DESC
+            """
+        ).fetchall()
+
+    titles = [
+        {
+            "player_id": str(row["player_id"]),
+            "player": str(row["player"]),
+            "titles": int(row["titles"] or 0),
+        }
+        for row in title_rows
+        if str(row["player_id"]) in active_ids
+    ]
+
+    recent_form: list[dict[str, Any]] = []
+
+    for player_id in active_ids:
+        player_matches = [
+            row
+            for row in match_rows
+            if (
+                str(row["player_1_id"]) == player_id
+                or str(row["player_2_id"]) == player_id
+            )
+        ][:10]
+
+        recent_wins = sum(
+            str(row["winner_id"]) == player_id
+            for row in player_matches
+        )
+        recent_losses = len(player_matches) - recent_wins
+
+        current_streak = 0
+        streak_type: str | None = None
+
+        for row in player_matches:
+            won = str(row["winner_id"]) == player_id
+            result_type = "win" if won else "loss"
+
+            if streak_type is None:
+                streak_type = result_type
+
+            if result_type != streak_type:
+                break
+
+            current_streak += 1
+
+        timeline = load_player_timeline(player_id)
+
+        if len(timeline) >= 4:
+            recent_elo_change = (
+                float(timeline[-1]["elo_exact"])
+                - float(timeline[-4]["elo_exact"])
+            )
+        elif len(timeline) >= 2:
+            recent_elo_change = (
+                float(timeline[-1]["elo_exact"])
+                - float(timeline[0]["elo_exact"])
+            )
+        else:
+            recent_elo_change = 0.0
+
+        recent_form.append(
+            {
+                "player_id": player_id,
+                "player": player_names[player_id],
+                "matches": len(player_matches),
+                "wins": recent_wins,
+                "losses": recent_losses,
+                "winrate": (
+                    recent_wins / len(player_matches) * 100.0
+                    if player_matches
+                    else None
+                ),
+                "streak_type": streak_type,
+                "streak": current_streak,
+                "elo_change_last_three": recent_elo_change,
+            }
+        )
+
+    featured_rivalry: dict[str, Any] | None = None
+    rivalry_score = float("-inf")
+
+    ranked_players = [
+        entry
+        for entry in ranking
+        if str(entry["player_id"]) in active_ids
+    ]
+
+    for left_index, left in enumerate(ranked_players):
+        for right in ranked_players[left_index + 1:]:
+            left_id = str(left["player_id"])
+            right_id = str(right["player_id"])
+
+            h2h = stats.get_head_to_head(
+                left_id,
+                right_id,
+                DB_PATH,
+            )
+
+            decided = int(h2h["decided_matches"])
+            if decided < 3:
+                continue
+
+            left_wins = int(h2h["player_a"]["wins"])
+            right_wins = int(h2h["player_b"]["wins"])
+            margin = abs(left_wins - right_wins)
+
+            # Rewards frequent, close rivalries involving highly ranked players.
+            score = (
+                decided * 2
+                - margin * 3
+                - int(left["rank"])
+                - int(right["rank"])
+            )
+
+            if score > rivalry_score:
+                rivalry_score = score
+                featured_rivalry = {
+                    "player_a": str(left["player"]),
+                    "player_b": str(right["player"]),
+                    "wins_a": left_wins,
+                    "wins_b": right_wins,
+                    "matches": decided,
+                    "last_match": h2h.get("last_match"),
+                }
+
+    return {
+        "ranking": ranked_players,
+        "titles": titles,
+        "defending_champion": (
+            str(latest_tournament["winner"])
+            if latest_tournament and latest_tournament["winner"]
+            else None
+        ),
+        "latest_tournament": (
+            f"WM {int(latest_tournament['tournament_number']):02d}"
+            if latest_tournament
+            else None
+        ),
+        "recent_form": recent_form,
+        "featured_rivalry": featured_rivalry,
+    }
 
 @st.cache_data
 def load_h2h_matrix(include_inactive: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -485,6 +702,14 @@ def show_home(include_inactive: bool) -> None:
     col1.metric("Current No. 1", leader["player"])
     col2.metric("No. 1 Elo", f"{leader['elo']:.1f}")
     col3.metric("Rated Matches", total_matches)
+
+    preview_data = load_tournament_preview_data()
+    preview_text = narratives.generate_tournament_preview(
+        preview_data,
+    )
+
+    st.subheader("🔮 Next Tournament Preview")
+    st.info(preview_text)
 
     st.subheader("Current Elo Ranking")
 
