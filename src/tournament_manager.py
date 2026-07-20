@@ -475,6 +475,228 @@ def update_participant(
             (draft_id,),
         )
 
+def assign_manual_seeds(
+    db_path: str | Path,
+    draft_id: str,
+    seed_by_player_id: dict[str, int],
+) -> None:
+    """Assigns a complete manual seeding to a draft."""
+
+    if not seed_by_player_id:
+        raise ValueError("At least one participant is required.")
+
+    assigned_seeds = list(seed_by_player_id.values())
+    participant_count = len(seed_by_player_id)
+
+    if any(seed <= 0 for seed in assigned_seeds):
+        raise ValueError("Seeds must be greater than zero.")
+
+    expected_seeds = set(range(1, participant_count + 1))
+
+    if set(assigned_seeds) != expected_seeds:
+        raise ValueError(
+            f"Seeds must contain every number from 1 to "
+            f"{participant_count} exactly once."
+        )
+
+    with connect_db(db_path) as connection:
+        draft = connection.execute(
+            """
+            SELECT
+                format_type,
+                status
+            FROM tournament_drafts
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchone()
+
+        if draft is None:
+            raise ValueError(f"Tournament draft not found: {draft_id}")
+
+        if draft["format_type"] != FORMAT_DOUBLE_ELIMINATION:
+            raise ValueError(
+                "Manual seeding is currently only available for "
+                "double-elimination-only tournaments."
+            )
+
+        if draft["status"] != "draft":
+            raise ValueError(
+                "Seeds can only be changed while the tournament "
+                "is still a draft."
+            )
+
+        participant_rows = connection.execute(
+            """
+            SELECT player_id
+            FROM tournament_draft_participants
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchall()
+
+        participant_ids = {
+            str(row["player_id"])
+            for row in participant_rows
+        }
+
+        supplied_ids = {
+            str(player_id)
+            for player_id in seed_by_player_id
+        }
+
+        if supplied_ids != participant_ids:
+            raise ValueError(
+                "A seed must be assigned to every participant."
+            )
+
+        # Clear existing seeds first so that players can swap seeds
+        # without temporarily violating the unique constraints.
+        connection.execute(
+            """
+            UPDATE tournament_draft_participants
+            SET
+                manual_seed = NULL,
+                bracket_seed = NULL
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        )
+
+        for player_id, seed in seed_by_player_id.items():
+            connection.execute(
+                """
+                UPDATE tournament_draft_participants
+                SET
+                    manual_seed = ?,
+                    bracket_seed = ?,
+                    starts_in = 'winners'
+                WHERE draft_id = ?
+                  AND player_id = ?
+                """,
+                (
+                    seed,
+                    seed,
+                    draft_id,
+                    player_id,
+                ),
+            )
+
+        connection.execute(
+            """
+            UPDATE tournament_drafts
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        )
+
+def save_participant_order(
+    db_path: str | Path,
+    draft_id: str,
+    ordered_player_ids: list[str],
+) -> None:
+    """Saves participant order as consecutive manual and bracket seeds."""
+
+    if not ordered_player_ids:
+        raise ValueError("At least one participant is required.")
+
+    if len(ordered_player_ids) != len(set(ordered_player_ids)):
+        raise ValueError("Each participant may only appear once.")
+
+    with connect_db(db_path) as connection:
+        draft = connection.execute(
+            """
+            SELECT
+                format_type,
+                status
+            FROM tournament_drafts
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchone()
+
+        if draft is None:
+            raise ValueError(f"Tournament draft not found: {draft_id}")
+
+        if draft["format_type"] != FORMAT_DOUBLE_ELIMINATION:
+            raise ValueError(
+                "Manual participant order is currently only available "
+                "for double-elimination-only tournaments."
+            )
+
+        if draft["status"] != "draft":
+            raise ValueError(
+                "Participant order can only be changed while "
+                "the tournament is still a draft."
+            )
+
+        participant_rows = connection.execute(
+            """
+            SELECT player_id
+            FROM tournament_draft_participants
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchall()
+
+        stored_player_ids = {
+            str(row["player_id"])
+            for row in participant_rows
+        }
+
+        supplied_player_ids = {
+            str(player_id)
+            for player_id in ordered_player_ids
+        }
+
+        if supplied_player_ids != stored_player_ids:
+            raise ValueError(
+                "The order must contain every participant exactly once."
+            )
+
+        # Clear seeds first to avoid temporary UNIQUE conflicts.
+        connection.execute(
+            """
+            UPDATE tournament_draft_participants
+            SET
+                manual_seed = NULL,
+                bracket_seed = NULL
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        )
+
+        for seed, player_id in enumerate(
+            ordered_player_ids,
+            start=1,
+        ):
+            connection.execute(
+                """
+                UPDATE tournament_draft_participants
+                SET
+                    manual_seed = ?,
+                    bracket_seed = ?,
+                    starts_in = 'winners'
+                WHERE draft_id = ?
+                  AND player_id = ?
+                """,
+                (
+                    seed,
+                    seed,
+                    draft_id,
+                    player_id,
+                ),
+            )
+
+        connection.execute(
+            """
+            UPDATE tournament_drafts
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        )
 
 def remove_participant(
     db_path: str | Path,
@@ -486,7 +708,9 @@ def remove_participant(
     with connect_db(db_path) as connection:
         draft = connection.execute(
             """
-            SELECT status
+            SELECT
+                status,
+                format_type
             FROM tournament_drafts
             WHERE draft_id = ?
             """,
@@ -515,6 +739,55 @@ def remove_participant(
             raise ValueError(
                 "The player is not part of this tournament draft."
             )
+
+        if draft["format_type"] == FORMAT_DOUBLE_ELIMINATION:
+            remaining_participants = connection.execute(
+                """
+                SELECT player_id
+                FROM tournament_draft_participants
+                WHERE draft_id = ?
+                ORDER BY
+                    CASE
+                        WHEN manual_seed IS NULL THEN 1
+                        ELSE 0
+                    END,
+                    manual_seed,
+                    player_id
+                """,
+                (draft_id,),
+            ).fetchall()
+
+            connection.execute(
+                """
+                UPDATE tournament_draft_participants
+                SET
+                    manual_seed = NULL,
+                    bracket_seed = NULL
+                WHERE draft_id = ?
+                """,
+                (draft_id,),
+            )
+
+            for seed, participant in enumerate(
+                remaining_participants,
+                start=1,
+            ):
+                connection.execute(
+                    """
+                    UPDATE tournament_draft_participants
+                    SET
+                        manual_seed = ?,
+                        bracket_seed = ?
+                    WHERE draft_id = ?
+                      AND player_id = ?
+                    """,
+                    (
+                        seed,
+                        seed,
+                        draft_id,
+                        participant["player_id"],
+                    ),
+                )
 
         connection.execute(
             """
