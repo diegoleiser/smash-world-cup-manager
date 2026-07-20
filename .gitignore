@@ -6,7 +6,7 @@
 
 # Private tournament data
 data/private_seed.json
-data/smash_wm.db
+data/*.db
 data/tournament_registry.csv
 data/raw/
 data/overrides/
