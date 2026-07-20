@@ -723,7 +723,7 @@ def show_player_page(include_inactive: bool) -> None:
             </div>
             <div style="display:flex;gap:1.75rem;text-align:center;flex-wrap:wrap;">
                 <div>
-                    <div style="opacity:0.65;font-size:0.78rem;">RANG</div>
+                    <div style="opacity:0.65;font-size:0.78rem;">RANK</div>
                     <div style="font-size:1.45rem;font-weight:800;">{rank_text}</div>
                 </div>
                 <div>
@@ -733,7 +733,7 @@ def show_player_page(include_inactive: bool) -> None:
                     </div>
                 </div>
                 <div>
-                    <div style="opacity:0.65;font-size:0.78rem;">TITEL</div>
+                    <div style="opacity:0.65;font-size:0.78rem;">TITLES</div>
                     <div style="font-size:1.45rem;font-weight:800;">
                         {profile['titles']}
                     </div>
