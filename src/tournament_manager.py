@@ -991,6 +991,525 @@ def save_participant_order(
             (draft_id,),
         )
 
+def get_draft_groups(
+    db_path: str | Path,
+    draft_id: str,
+) -> list[dict[str, Any]]:
+    """Returns all groups and assigned players for a tournament draft."""
+
+    with connect_db(db_path) as connection:
+        draft = connection.execute(
+            """
+            SELECT draft_id
+            FROM tournament_drafts
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchone()
+
+        if draft is None:
+            raise ValueError(f"Tournament draft not found: {draft_id}")
+
+        group_rows = connection.execute(
+            """
+            SELECT
+                group_id,
+                group_number,
+                group_name
+            FROM tournament_draft_groups
+            WHERE draft_id = ?
+            ORDER BY group_number
+            """,
+            (draft_id,),
+        ).fetchall()
+
+        groups: list[dict[str, Any]] = []
+
+        for group_row in group_rows:
+            member_rows = connection.execute(
+                """
+                SELECT
+                    gm.player_id,
+                    p.display_name AS player,
+                    dp.manual_seed,
+                    gm.group_position
+                FROM tournament_draft_group_members AS gm
+                JOIN players AS p
+                  ON p.player_id = gm.player_id
+                JOIN tournament_draft_participants AS dp
+                  ON dp.player_id = gm.player_id
+                 AND dp.draft_id = ?
+                WHERE gm.group_id = ?
+                ORDER BY
+                    CASE
+                        WHEN gm.group_position IS NULL THEN 1
+                        ELSE 0
+                    END,
+                    gm.group_position,
+                    dp.manual_seed,
+                    p.display_name COLLATE NOCASE
+                """,
+                (
+                    draft_id,
+                    group_row["group_id"],
+                ),
+            ).fetchall()
+
+            groups.append(
+                {
+                    **dict(group_row),
+                    "members": [
+                        dict(member)
+                        for member in member_rows
+                    ],
+                }
+            )
+
+    return groups
+
+def reset_draft_groups(
+    db_path: str | Path,
+    draft_id: str,
+) -> None:
+    """Deletes all group assignments and groups for a draft."""
+
+    with connect_db(db_path) as connection:
+        draft = connection.execute(
+            """
+            SELECT
+                format_type,
+                status
+            FROM tournament_drafts
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchone()
+
+        if draft is None:
+            raise ValueError(f"Tournament draft not found: {draft_id}")
+
+        if draft["format_type"] != FORMAT_GROUP_STAGE:
+            raise ValueError(
+                "Groups are only available for group-stage tournaments."
+            )
+
+        if draft["status"] != "draft":
+            raise ValueError(
+                "Groups can only be reset while the tournament "
+                "is still a draft."
+            )
+
+        connection.execute(
+            """
+            DELETE FROM tournament_draft_groups
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        )
+
+        connection.execute(
+            """
+            UPDATE tournament_drafts
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        )
+
+def create_draft_groups(
+    db_path: str | Path,
+    draft_id: str,
+    group_count: int,
+) -> list[dict[str, Any]]:
+    """Creates groups and assigns participants using snake seeding."""
+
+    if group_count <= 0:
+        raise ValueError("At least one group is required.")
+
+    with connect_db(db_path) as connection:
+        draft = connection.execute(
+            """
+            SELECT
+                format_type,
+                status
+            FROM tournament_drafts
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchone()
+
+        if draft is None:
+            raise ValueError(f"Tournament draft not found: {draft_id}")
+
+        if draft["format_type"] != FORMAT_GROUP_STAGE:
+            raise ValueError(
+                "Groups are only available for group-stage tournaments."
+            )
+
+        if draft["status"] != "draft":
+            raise ValueError(
+                "Groups can only be created while the tournament "
+                "is still a draft."
+            )
+
+        participants = connection.execute(
+            """
+            SELECT
+                player_id,
+                manual_seed
+            FROM tournament_draft_participants
+            WHERE draft_id = ?
+            ORDER BY
+                CASE
+                    WHEN manual_seed IS NULL THEN 1
+                    ELSE 0
+                END,
+                manual_seed,
+                player_id
+            """,
+            (draft_id,),
+        ).fetchall()
+
+        participant_count = len(participants)
+
+        if participant_count < 2:
+            raise ValueError(
+                "At least two participants are required "
+                "for a group stage."
+            )
+
+        if participant_count < group_count * 2:
+            raise ValueError(
+                "Each group must contain at least two participants."
+            )
+
+        seeds = [
+            int(participant["manual_seed"])
+            for participant in participants
+            if participant["manual_seed"] is not None
+        ]
+
+        expected_seeds = list(range(1, participant_count + 1))
+
+        if sorted(seeds) != expected_seeds:
+            raise ValueError(
+                "Generate and save a complete initial seeding "
+                "before creating groups."
+            )
+
+        # Recreating groups replaces the previous group setup.
+        connection.execute(
+            """
+            DELETE FROM tournament_draft_groups
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        )
+
+        created_groups: list[dict[str, Any]] = []
+
+        for group_index in range(group_count):
+            group_number = group_index + 1
+            group_name = (
+                "Group A"
+                if group_count == 1
+                else f"Group {chr(65 + group_index)}"
+            )
+            group_id = f"group_{uuid.uuid4().hex}"
+
+            connection.execute(
+                """
+                INSERT INTO tournament_draft_groups (
+                    group_id,
+                    draft_id,
+                    group_number,
+                    group_name
+                )
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    group_id,
+                    draft_id,
+                    group_number,
+                    group_name,
+                ),
+            )
+
+            created_groups.append(
+                {
+                    "group_id": group_id,
+                    "group_number": group_number,
+                    "group_name": group_name,
+                }
+            )
+
+        group_member_counts = [0] * group_count
+
+        for participant_index, participant in enumerate(participants):
+            row_number = participant_index // group_count
+            position_in_row = participant_index % group_count
+
+            if row_number % 2 == 0:
+                group_index = position_in_row
+            else:
+                group_index = group_count - 1 - position_in_row
+
+            group = created_groups[group_index]
+            group_member_counts[group_index] += 1
+
+            connection.execute(
+                """
+                INSERT INTO tournament_draft_group_members (
+                    group_id,
+                    player_id,
+                    group_position
+                )
+                VALUES (?, ?, ?)
+                """,
+                (
+                    group["group_id"],
+                    participant["player_id"],
+                    group_member_counts[group_index],
+                ),
+            )
+
+        connection.execute(
+            """
+            UPDATE tournament_drafts
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        )
+
+    return get_draft_groups(
+        db_path,
+        draft_id,
+    )
+
+def move_draft_group_member(
+    db_path: str | Path,
+    draft_id: str,
+    player_id: str,
+    target_group_id: str,
+) -> list[dict[str, Any]]:
+    """Moves one participant to another group and resequences positions."""
+
+    with connect_db(db_path) as connection:
+        draft = connection.execute(
+            """
+            SELECT
+                format_type,
+                status
+            FROM tournament_drafts
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchone()
+
+        if draft is None:
+            raise ValueError(f"Tournament draft not found: {draft_id}")
+
+        if draft["format_type"] != FORMAT_GROUP_STAGE:
+            raise ValueError(
+                "Group assignments are only available for "
+                "group-stage tournaments."
+            )
+
+        if draft["status"] != "draft":
+            raise ValueError(
+                "Group assignments can only be changed while "
+                "the tournament is still a draft."
+            )
+
+        target_group = connection.execute(
+            """
+            SELECT
+                group_id,
+                draft_id
+            FROM tournament_draft_groups
+            WHERE group_id = ?
+            """,
+            (target_group_id,),
+        ).fetchone()
+
+        if target_group is None:
+            raise ValueError(
+                f"Target group not found: {target_group_id}"
+            )
+
+        if str(target_group["draft_id"]) != draft_id:
+            raise ValueError(
+                "The target group belongs to another tournament draft."
+            )
+
+        current_membership = connection.execute(
+            """
+            SELECT
+                gm.group_id,
+                gm.group_position
+            FROM tournament_draft_group_members AS gm
+            JOIN tournament_draft_groups AS g
+              ON g.group_id = gm.group_id
+            WHERE g.draft_id = ?
+              AND gm.player_id = ?
+            """,
+            (
+                draft_id,
+                player_id,
+            ),
+        ).fetchone()
+
+        if current_membership is None:
+            raise ValueError(
+                "The player is not assigned to a group in this draft."
+            )
+
+        source_group_id = str(current_membership["group_id"])
+
+        if source_group_id == target_group_id:
+            raise ValueError(
+                "The player is already assigned to the selected group."
+            )
+
+        source_member_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM tournament_draft_group_members
+                WHERE group_id = ?
+                """,
+                (source_group_id,),
+            ).fetchone()[0]
+        )
+
+        if source_member_count <= 2:
+            raise ValueError(
+                "The player cannot be moved because every group "
+                "must contain at least two players."
+            )
+
+        target_position = int(
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM tournament_draft_group_members
+                WHERE group_id = ?
+                """,
+                (target_group_id,),
+            ).fetchone()[0]
+        ) + 1
+
+        connection.execute(
+            """
+            DELETE FROM tournament_draft_group_members
+            WHERE group_id = ?
+              AND player_id = ?
+            """,
+            (
+                source_group_id,
+                player_id,
+            ),
+        )
+
+        connection.execute(
+            """
+            INSERT INTO tournament_draft_group_members (
+                group_id,
+                player_id,
+                group_position
+            )
+            VALUES (?, ?, ?)
+            """,
+            (
+                target_group_id,
+                player_id,
+                target_position,
+            ),
+        )
+
+        source_members = connection.execute(
+            """
+            SELECT player_id
+            FROM tournament_draft_group_members
+            WHERE group_id = ?
+            ORDER BY
+                CASE
+                    WHEN group_position IS NULL THEN 1
+                    ELSE 0
+                END,
+                group_position,
+                player_id
+            """,
+            (source_group_id,),
+        ).fetchall()
+
+        for position, member in enumerate(
+            source_members,
+            start=1,
+        ):
+            connection.execute(
+                """
+                UPDATE tournament_draft_group_members
+                SET group_position = ?
+                WHERE group_id = ?
+                  AND player_id = ?
+                """,
+                (
+                    position,
+                    source_group_id,
+                    member["player_id"],
+                ),
+            )
+
+        target_members = connection.execute(
+            """
+            SELECT player_id
+            FROM tournament_draft_group_members
+            WHERE group_id = ?
+            ORDER BY
+                CASE
+                    WHEN group_position IS NULL THEN 1
+                    ELSE 0
+                END,
+                group_position,
+                player_id
+            """,
+            (target_group_id,),
+        ).fetchall()
+
+        for position, member in enumerate(
+            target_members,
+            start=1,
+        ):
+            connection.execute(
+                """
+                UPDATE tournament_draft_group_members
+                SET group_position = ?
+                WHERE group_id = ?
+                  AND player_id = ?
+                """,
+                (
+                    position,
+                    target_group_id,
+                    member["player_id"],
+                ),
+            )
+
+        connection.execute(
+            """
+            UPDATE tournament_drafts
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        )
+
+    return get_draft_groups(
+        db_path,
+        draft_id,
+    )
+
 def remove_participant(
     db_path: str | Path,
     draft_id: str,

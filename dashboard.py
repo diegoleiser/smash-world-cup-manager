@@ -699,6 +699,17 @@ def load_tournament_draft(draft_id: str) -> dict[str, Any]:
         draft_id,
     )
 
+@st.cache_data
+def load_tournament_draft_groups(
+    draft_id: str,
+) -> list[dict[str, Any]]:
+    """Loads group assignments for one tournament draft."""
+
+    return tournament_manager.get_draft_groups(
+        DB_PATH,
+        draft_id,
+    )
+
 def show_home(include_inactive: bool) -> None:
     st.title("🎮 Smash World Championship")
     st.caption("Current ranking and overview of the private World Championship archive")
@@ -2158,7 +2169,8 @@ def show_tournament_manager() -> None:
 
             else:
                 st.info(
-                    "Seeds will be determined after the group stage."
+                    "The player will be included the next time the initial "
+                    "seeding is generated."
                 )
 
                 manual_seed = None
@@ -2399,6 +2411,221 @@ def show_tournament_manager() -> None:
                 st.success("Seeding order saved.")
                 st.rerun()
 
+        if (
+            draft["format_type"]
+            == tournament_manager.FORMAT_GROUP_STAGE
+        ):
+            st.divider()
+            st.subheader("Group Stage")
+
+            groups = load_tournament_draft_groups(
+                selected_draft_id,
+            )
+
+            participant_count = len(draft["participants"])
+            max_group_count = participant_count // 2
+
+            if max_group_count >= 1:
+                default_group_count = (
+                    len(groups)
+                    if groups
+                    else 1
+                )
+
+                group_count = st.number_input(
+                    "Number of groups",
+                    min_value=1,
+                    max_value=max_group_count,
+                    value=min(
+                        default_group_count,
+                        max_group_count,
+                    ),
+                    step=1,
+                    key=f"group_count_{selected_draft_id}",
+                )
+
+                st.caption(
+                    "Players are distributed by snake seeding. "
+                    "Each group must contain at least two players."
+                )
+
+                if st.button(
+                    (
+                        "Recreate Groups"
+                        if groups
+                        else "Create Groups"
+                    ),
+                    type="primary",
+                    key=f"create_groups_{selected_draft_id}",
+                ):
+                    try:
+                        tournament_manager.create_draft_groups(
+                            DB_PATH,
+                            selected_draft_id,
+                            int(group_count),
+                        )
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.cache_data.clear()
+                        st.success(
+                            "Groups created using snake seeding."
+                        )
+                        st.rerun()
+
+                if groups:
+                    st.caption(
+                        "Recreating the groups replaces the current "
+                        "group assignments."
+                    )
+
+                    if len(groups) > 1:
+                        st.markdown("#### Move Player")
+
+                        group_by_name = {
+                            str(group["group_name"]): str(group["group_id"])
+                            for group in groups
+                        }
+
+                        player_group_lookup = {
+                            str(member["player_id"]): {
+                                "player": str(member["player"]),
+                                "group_id": str(group["group_id"]),
+                                "group_name": str(group["group_name"]),
+                            }
+                            for group in groups
+                            for member in group["members"]
+                        }
+
+                        movable_player_by_label = {
+                            (
+                                f"{data['player']} · "
+                                f"{data['group_name']}"
+                            ): player_id
+                            for player_id, data
+                            in player_group_lookup.items()
+                        }
+
+                        selected_move_label = st.selectbox(
+                            "Player",
+                            options=list(movable_player_by_label),
+                            key=f"move_group_player_{selected_draft_id}",
+                        )
+
+                        selected_move_player_id = (
+                            movable_player_by_label[
+                                selected_move_label
+                            ]
+                        )
+
+                        current_group_id = (
+                            player_group_lookup[
+                                selected_move_player_id
+                            ]["group_id"]
+                        )
+
+                        available_target_groups = {
+                            name: group_id
+                            for name, group_id in group_by_name.items()
+                            if group_id != current_group_id
+                        }
+
+                        selected_target_group_name = st.selectbox(
+                            "Move to",
+                            options=list(available_target_groups),
+                            key=f"move_target_group_{selected_draft_id}",
+                        )
+
+                        if st.button(
+                            "Move Player",
+                            key=f"move_group_member_{selected_draft_id}",
+                        ):
+                            try:
+                                tournament_manager.move_draft_group_member(
+                                    DB_PATH,
+                                    selected_draft_id,
+                                    selected_move_player_id,
+                                    available_target_groups[
+                                        selected_target_group_name
+                                    ],
+                                )
+                            except ValueError as exc:
+                                st.error(str(exc))
+                            else:
+                                st.cache_data.clear()
+                                st.success(
+                                    "Player moved to the selected group."
+                                )
+                                st.rerun()
+
+                        group_columns = st.columns(len(groups))
+
+                        for column, group in zip(
+                            group_columns,
+                            groups,
+                        ):
+                            with column:
+                                st.markdown(
+                                    f"### {group['group_name']}"
+                                )
+
+                                if group["members"]:
+                                    group_rows = [
+                                        {
+                                            "Position": member[
+                                                "group_position"
+                                            ],
+                                            "Initial Seed": member[
+                                                "manual_seed"
+                                            ],
+                                            "Player": member["player"],
+                                        }
+                                        for member in group["members"]
+                                    ]
+
+                                    st.dataframe(
+                                        pd.DataFrame(group_rows),
+                                        hide_index=True,
+                                        use_container_width=True,
+                                        column_config={
+                                            "Position":
+                                                st.column_config.NumberColumn(
+                                                    format="%d",
+                                                ),
+                                            "Initial Seed":
+                                                st.column_config.NumberColumn(
+                                                    format="%d",
+                                                ),
+                                        },
+                                    )
+                                else:
+                                    st.info(
+                                        "No players assigned."
+                                    )
+
+                        if st.button(
+                            "Reset Groups",
+                            type="secondary",
+                            key=f"reset_groups_{selected_draft_id}",
+                        ):
+                            try:
+                                tournament_manager.reset_draft_groups(
+                                    DB_PATH,
+                                    selected_draft_id,
+                                )
+                            except ValueError as exc:
+                                st.error(str(exc))
+                            else:
+                                st.cache_data.clear()
+                                st.success(
+                                    "Group assignments reset."
+                                )
+                                st.rerun()
+            else:
+                st.info(
+                    "At least two participants are required "
+                    "to create a group."
+                )
 
         remove_player_by_name = {
             str(participant["player"]): str(participant["player_id"])
