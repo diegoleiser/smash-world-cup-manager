@@ -1701,18 +1701,40 @@ def show_h2h_matrix(include_inactive: bool) -> None:
             selection_mode="single-cell",
             key="h2h_matrix_selection",
         )
-        selected_cells = selection_event.selection.cells
+
+        selection_state = selection_event.get(
+            "selection",
+            {},
+        )
+
+        selected_cells = selection_state.get(
+            "cells",
+            [],
+        )
+
         if selected_cells:
             row_index, column_name = selected_cells[0]
             row_index = int(row_index)
             right_name = str(column_name)
+
             if (
                 0 <= row_index < len(names)
                 and right_name in player_ids
             ):
-                selected_pair = (names[row_index], right_name)
-    except (AttributeError, KeyError, TypeError):
-        st.dataframe(styled, use_container_width=True)
+                selected_pair = (
+                    names[row_index],
+                    right_name,
+                )
+
+    except (
+        AttributeError,
+        KeyError,
+        TypeError,
+    ):
+        st.dataframe(
+            styled,
+            use_container_width=True,
+        )
 
     st.caption(
         "Green = winning record, red = losing record, "
@@ -2007,6 +2029,275 @@ def show_tournaments() -> None:
             .properties(height=max(240, len(winners) * 38))
         )
         st.altair_chart(chart, use_container_width=True)
+
+@st.dialog(
+    "Edit Bracket Match",
+    width="medium",
+)
+def show_bracket_match_dialog(
+    match: dict[str, Any],
+    dialog_state_key: str,
+) -> None:
+    """Display controls for one bracket match."""
+
+    player_1_name = (
+        str(match["player_1_name"])
+        if match["player_1_name"]
+        else "TBD"
+    )
+
+    player_2_name = (
+        str(match["player_2_name"])
+        if match["player_2_name"]
+        else "TBD"
+    )
+
+    match_status = str(match["status"])
+    match_code = str(match["match_code"])
+
+    status_display = {
+        "waiting": "Waiting",
+        "pending": "Ready",
+        "completed": "Played",
+        "forfeit": "W–L",
+        "bye": "Bye",
+        "cancelled": "Cancelled",
+    }.get(
+        match_status,
+        match_status.title(),
+    )
+
+    st.markdown(f"### {match_code}")
+
+    st.markdown(
+        (
+            '<div style="'
+            'display:grid;'
+            'grid-template-columns:1fr auto 1fr;'
+            'align-items:center;'
+            'gap:1rem;'
+            'margin:0.5rem 0 1.25rem 0;'
+            '">'
+            '<div style="'
+            'text-align:right;'
+            'font-size:1.6rem;'
+            'font-weight:750;'
+            '">'
+            f'{html.escape(player_1_name)}'
+            '</div>'
+            '<div style="'
+            'opacity:0.55;'
+            'font-size:0.9rem;'
+            'font-weight:700;'
+            '">'
+            'VS'
+            '</div>'
+            '<div style="'
+            'text-align:left;'
+            'font-size:1.6rem;'
+            'font-weight:750;'
+            '">'
+            f'{html.escape(player_2_name)}'
+            '</div>'
+            '</div>'
+        ),
+        unsafe_allow_html=True,
+    )
+
+    st.caption(f"Status: {status_display}")
+
+    if match_status == "waiting":
+        st.info(
+            "This match is waiting for players from earlier rounds."
+        )
+        return
+
+    if match_status == "bye":
+        st.info(
+            f"{match['winner_name']} advances automatically."
+        )
+        return
+
+    if match_status == "pending":
+        result_type = st.radio(
+            "Result type",
+            options=[
+                "Played",
+                "W–L",
+                "Cancelled",
+            ],
+            horizontal=True,
+            key=(
+                f"dialog_result_type_"
+                f"{match['bracket_match_id']}"
+            ),
+        )
+
+        with st.form(
+            f"dialog_bracket_match_"
+            f"{match['bracket_match_id']}"
+        ):
+            winner_id = None
+            player_1_score = None
+            player_2_score = None
+
+            if result_type == "Played":
+                score_cols = st.columns(2)
+
+                with score_cols[0]:
+                    player_1_score = st.number_input(
+                        f"{player_1_name} score",
+                        min_value=0,
+                        value=0,
+                        step=1,
+                    )
+
+                with score_cols[1]:
+                    player_2_score = st.number_input(
+                        f"{player_2_name} score",
+                        min_value=0,
+                        value=0,
+                        step=1,
+                    )
+
+            elif result_type == "W–L":
+                winner_options = {
+                    player_1_name: str(
+                        match["player_1_id"]
+                    ),
+                    player_2_name: str(
+                        match["player_2_id"]
+                    ),
+                }
+
+                selected_winner_name = st.selectbox(
+                    "Winner",
+                    options=list(winner_options),
+                )
+
+                winner_id = winner_options[
+                    selected_winner_name
+                ]
+
+            save_result = st.form_submit_button(
+                "Save Result",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if save_result:
+            if result_type == "Played":
+                if player_1_score == player_2_score:
+                    st.error(
+                        "A played match cannot end in a tie."
+                    )
+                    return
+
+                result_status = "completed"
+
+            elif result_type == "W–L":
+                result_status = "forfeit"
+
+            else:
+                result_status = "cancelled"
+
+            try:
+                tournament_manager.update_draft_bracket_match(
+                    DB_PATH,
+                    str(match["bracket_match_id"]),
+                    status=result_status,
+                    winner_id=winner_id,
+                    player_1_score=(
+                        int(player_1_score)
+                        if player_1_score is not None
+                        else None
+                    ),
+                    player_2_score=(
+                        int(player_2_score)
+                        if player_2_score is not None
+                        else None
+                    ),
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.cache_data.clear()
+
+                st.session_state.pop(
+                    dialog_state_key,
+                    None,
+                )
+
+                st.rerun()
+
+        return
+
+    if match_status in {
+        "completed",
+        "forfeit",
+        "cancelled",
+    }:
+        if (
+            match_status == "completed"
+            and match["player_1_score"] is not None
+            and match["player_2_score"] is not None
+        ):
+            st.success(
+                f"Result: "
+                f"{match['player_1_score']}–"
+                f"{match['player_2_score']}"
+            )
+
+        elif match_status == "forfeit":
+            st.success("Result: W–L")
+
+        elif match_status == "cancelled":
+            st.info("This match was cancelled.")
+
+        if match["winner_name"]:
+            st.write(
+                f"Winner: **{match['winner_name']}**"
+            )
+
+        st.warning(
+            "Resetting this result also clears dependent "
+            "later bracket matches."
+        )
+
+        confirm_reset = st.checkbox(
+            "I understand that dependent results will be cleared.",
+            key=(
+                f"dialog_confirm_reset_"
+                f"{match['bracket_match_id']}"
+            ),
+        )
+
+        if st.button(
+            "Reset Result",
+            type="secondary",
+            disabled=not confirm_reset,
+            use_container_width=True,
+            key=(
+                f"dialog_reset_result_"
+                f"{match['bracket_match_id']}"
+            ),
+        ):
+            try:
+                tournament_manager.reset_draft_bracket_match_result(
+                    DB_PATH,
+                    str(match["bracket_match_id"]),
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.cache_data.clear()
+
+                st.session_state.pop(
+                    dialog_state_key,
+                    None,
+                )
+
+                st.rerun()
 
 def show_tournament_manager() -> None:
     """Creates and manages tournament drafts."""
@@ -3627,12 +3918,74 @@ def show_tournament_manager() -> None:
 
         bracket_matches = draft_bracket_state["matches"]
 
+        visible_match_codes = {
+            str(match["match_code"])
+            for match in bracket_matches
+            if match["status"] != "inactive"
+        }
+
+        dialog_state_key = (
+            f"open_bracket_match_code_"
+            f"{selected_draft_id}"
+        )
+
+        open_match_code = st.session_state.get(
+            dialog_state_key
+        )
+
+        if open_match_code not in visible_match_codes:
+            open_match_code = None
+            st.session_state.pop(
+                dialog_state_key,
+                None,
+            )
+
         st.markdown("### Bracket View")
 
-        bracket_visualization.render_bracket(
-            bracket_matches,
-            draft_bracket_state["routes"],
+        clicked_match_code = (
+            bracket_visualization.render_bracket(
+                bracket_matches,
+                draft_bracket_state["routes"],
+                selected_match_code=open_match_code,
+                component_key=(
+                    f"bracket_component_"
+                    f"{selected_draft_id}"
+                ),
+            )
         )
+
+        if (
+            clicked_match_code
+            and clicked_match_code in visible_match_codes
+            and clicked_match_code != open_match_code
+        ):
+            st.session_state[
+                dialog_state_key
+            ] = clicked_match_code
+
+            st.rerun()
+
+        if open_match_code:
+            selected_dialog_match = next(
+                (
+                    match
+                    for match in bracket_matches
+                    if str(match["match_code"])
+                    == str(open_match_code)
+                ),
+                None,
+            )
+
+            if selected_dialog_match is not None:
+                show_bracket_match_dialog(
+                    selected_dialog_match,
+                    dialog_state_key,
+                )
+            else:
+                st.session_state.pop(
+                    dialog_state_key,
+                    None,
+                )
 
         st.markdown("### Match Management")
 
@@ -3759,7 +4112,7 @@ def show_tournament_manager() -> None:
 
                     with st.expander(
                         match_label,
-                        expanded=match_status == "pending",
+                        expanded=False,
                     ):
                         st.markdown(
                             (
