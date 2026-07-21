@@ -754,6 +754,17 @@ def load_tournament_draft_bracket_state(
         draft_id,
     )
 
+@st.cache_data
+def load_tournament_draft_finalization_preview(
+    draft_id: str,
+) -> dict[str, Any]:
+    """Loads the archive preview for a completed tournament draft."""
+
+    return tournament_manager.get_draft_finalization_preview(
+        DB_PATH,
+        draft_id,
+    )
+
 def show_home(include_inactive: bool) -> None:
     st.title("🎮 Smash World Championship")
     st.caption("Current ranking and overview of the private World Championship archive")
@@ -2201,6 +2212,63 @@ def show_tournament_manager() -> None:
         f"{entry_display[draft['bracket_entry_mode']]}"
     )
 
+    if draft["status"] == "completed":
+        st.success(
+            "This tournament has been finalized and added "
+            "to the permanent archive."
+        )
+        st.info(
+            "Open the Tournaments page to view the archived "
+            "results and statistics."
+        )
+        return
+
+    with st.expander("Edit Tournament Details"):
+        current_draft_date = (
+            pd.to_datetime(
+                draft["tournament_date"]
+            ).date()
+            if draft["tournament_date"]
+            else None
+        )
+
+        with st.form(
+            f"edit_draft_details_{selected_draft_id}"
+        ):
+            edited_tournament_date = st.date_input(
+                "Tournament date",
+                value=current_draft_date,
+            )
+
+            save_draft_details = (
+                st.form_submit_button(
+                    "Save Tournament Details",
+                    type="primary",
+                )
+            )
+
+        if save_draft_details:
+            date_text = (
+                edited_tournament_date.isoformat()
+                if edited_tournament_date is not None
+                else None
+            )
+
+            try:
+                tournament_manager.update_draft_date(
+                    DB_PATH,
+                    selected_draft_id,
+                    date_text,
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.cache_data.clear()
+                st.success(
+                    "Tournament details updated."
+                )
+                st.rerun()
+
     st.subheader("Participants")
 
     if setup_locked:
@@ -3419,6 +3487,142 @@ def show_tournament_manager() -> None:
                 f"Champion: "
                 f"{draft_bracket_state['champion_name']}"
             )
+
+        if draft_bracket_state["champion_name"]:
+            st.markdown("### Finalize Tournament")
+
+            try:
+                finalization_preview = (
+                    load_tournament_draft_finalization_preview(
+                        selected_draft_id,
+                    )
+                )
+            except ValueError as exc:
+                st.warning(str(exc))
+            else:
+                finalization_cols = st.columns(4)
+
+                finalization_cols[0].metric(
+                    "Champion",
+                    finalization_preview["champion_name"],
+                )
+                finalization_cols[1].metric(
+                    "Participants",
+                    finalization_preview["participant_count"],
+                )
+                finalization_cols[2].metric(
+                    "Matches to Archive",
+                    finalization_preview["matches_to_archive"],
+                )
+                finalization_cols[3].metric(
+                    "Tournament",
+                    (
+                        f"WC "
+                        f"{finalization_preview['tournament_number']:02d}"
+                    ),
+                )
+
+                st.markdown("#### Final Placements")
+
+                placement_rows = [
+                    {
+                        "Placement": placement["placement"],
+                        "Player": placement["player"],
+                        "Seed": placement["seed"],
+                    }
+                    for placement
+                    in finalization_preview["placements"]
+                ]
+
+                st.dataframe(
+                    pd.DataFrame(placement_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "Placement":
+                            st.column_config.NumberColumn(
+                                format="%d",
+                            ),
+                        "Seed":
+                            st.column_config.NumberColumn(
+                                format="%d",
+                            ),
+                    },
+                )
+
+                if (
+                    finalization_preview[
+                        "automatic_bracket_matches_omitted"
+                    ]
+                ):
+                    st.caption(
+                        f"{finalization_preview['automatic_bracket_matches_omitted']} "
+                        "automatic, cancelled, or inactive bracket matches "
+                        "will not be added to the archive."
+                    )
+
+                if (
+                    finalization_preview[
+                        "cancelled_group_matches_omitted"
+                    ]
+                ):
+                    st.caption(
+                        f"{finalization_preview['cancelled_group_matches_omitted']} "
+                        "cancelled group matches will not be added "
+                        "to the archive."
+                    )
+
+                st.warning(
+                    "Finalizing writes the tournament, participants, "
+                    "placements, and match results to the permanent archive. "
+                    "The draft can no longer be edited afterwards."
+                )
+
+                confirm_finalization = st.checkbox(
+                    (
+                        f"I confirm that WC "
+                        f"{finalization_preview['tournament_number']:02d} "
+                        "is complete and ready for the archive."
+                    ),
+                    key=(
+                        f"confirm_tournament_finalization_"
+                        f"{selected_draft_id}"
+                    ),
+                )
+
+                if st.button(
+                    "Finalize Tournament",
+                    type="primary",
+                    key=(
+                        f"finalize_tournament_"
+                        f"{selected_draft_id}"
+                    ),
+                    disabled=not confirm_finalization,
+                ):
+                    try:
+                        result = (
+                            tournament_manager
+                            .finalize_draft_tournament(
+                                DB_PATH,
+                                selected_draft_id,
+                            )
+                        )
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    except Exception as exc:
+                        st.error(
+                            "The tournament could not be finalized: "
+                            f"{exc}"
+                        )
+                    else:
+                        st.cache_data.clear()
+                        st.success(
+                            f"WC {result['tournament_number']:02d} "
+                            f"was archived successfully. "
+                            f"{result['matches_archived']} matches "
+                            "were added."
+                        )
+                        st.rerun()
 
         bracket_matches = draft_bracket_state["matches"]
 
