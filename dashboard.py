@@ -20,6 +20,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 try:
+    import bracket_visualization
     import milestones
     import narratives
     import smash_statistics as stats
@@ -27,8 +28,8 @@ try:
 except ImportError as exc:
     raise ImportError(
         "Required files were not found in src/. "
-        "Make sure smash_statistics.py, narratives.py, milestones.py, "
-        "and tournament_manager.py exist."
+        "Make sure bracket_visualization.py, smash_statistics.py, "
+        "narratives.py, milestones.py, and tournament_manager.py exist."
     ) from exc
 
 
@@ -3625,6 +3626,15 @@ def show_tournament_manager() -> None:
                         st.rerun()
 
         bracket_matches = draft_bracket_state["matches"]
+
+        st.markdown("### Bracket View")
+
+        bracket_visualization.render_bracket(
+            bracket_matches,
+            draft_bracket_state["routes"],
+        )
+
+        st.markdown("### Match Management")
 
         visible_bracket_matches = [
             match
