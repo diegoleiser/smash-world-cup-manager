@@ -1567,6 +1567,48 @@ def get_draft_bracket_matches(
         for row in rows
     ]
 
+def get_draft_bracket_routes(
+    db_path: str | Path,
+    draft_id: str,
+) -> list[dict[str, Any]]:
+    """Return all winner and loser routes of a generated bracket."""
+
+    with connect_db(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                r.route_id,
+                r.source_match_id,
+                source.match_code AS source_code,
+                r.source_outcome,
+                r.target_match_id,
+                target.match_code AS target_code,
+                r.target_slot
+            FROM tournament_draft_bracket_routes AS r
+            JOIN tournament_draft_bracket_matches AS source
+              ON source.bracket_match_id = r.source_match_id
+            JOIN tournament_draft_bracket_matches AS target
+              ON target.bracket_match_id = r.target_match_id
+            WHERE r.draft_id = ?
+            ORDER BY
+                CASE source.bracket_side
+                    WHEN 'winners' THEN 1
+                    WHEN 'losers' THEN 2
+                    WHEN 'finals' THEN 3
+                    ELSE 4
+                END,
+                source.round_number,
+                source.match_number,
+                r.source_outcome
+            """,
+            (draft_id,),
+        ).fetchall()
+
+    return [
+        dict(row)
+        for row in rows
+    ]
+
 def get_draft_bracket_state(
     db_path: str | Path,
     draft_id: str,
@@ -1576,6 +1618,11 @@ def get_draft_bracket_state(
     """
 
     matches = get_draft_bracket_matches(
+        db_path,
+        draft_id,
+    )
+
+    routes = get_draft_bracket_routes(
         db_path,
         draft_id,
     )
@@ -1607,6 +1654,8 @@ def get_draft_bracket_state(
         "generated": bool(matches),
         "matches": matches,
         "match_count": len(matches),
+        "routes": routes,
+        "route_count": len(routes),
         "pending_count": sum(
             match["status"] == "pending"
             for match in matches
