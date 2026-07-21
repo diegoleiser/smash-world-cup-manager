@@ -258,6 +258,138 @@ def get_draft(
         "participants": [dict(row) for row in participants],
     }
 
+def create_player(
+    db_path: str | Path,
+    display_name: str,
+    *,
+    active: bool = True,
+    core_player: bool = False,
+    notes: str | None = None,
+) -> str:
+    """Creates a new player profile and returns the player ID."""
+
+    cleaned_name = display_name.strip()
+
+    if not cleaned_name:
+        raise ValueError("Player name must not be empty.")
+
+    player_id = f"player_{uuid.uuid4().hex}"
+
+    with connect_db(db_path) as connection:
+        existing_player = connection.execute(
+            """
+            SELECT player_id
+            FROM players
+            WHERE display_name = ? COLLATE NOCASE
+            """,
+            (cleaned_name,),
+        ).fetchone()
+
+        if existing_player is not None:
+            raise ValueError(
+                f"A player named {cleaned_name} already exists."
+            )
+
+        try:
+            connection.execute(
+                """
+                INSERT INTO players (
+                    player_id,
+                    display_name,
+                    core_player,
+                    active,
+                    notes
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    player_id,
+                    cleaned_name,
+                    int(core_player),
+                    int(active),
+                    notes.strip() if notes and notes.strip() else None,
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError(
+                "The player profile could not be created."
+            ) from exc
+
+    return player_id
+
+def create_player_and_add_to_draft(
+    db_path: str | Path,
+    draft_id: str,
+    display_name: str,
+    *,
+    active: bool = True,
+    core_player: bool = False,
+    notes: str | None = None,
+) -> str:
+    """Creates a player profile and immediately adds it to a draft."""
+
+    with connect_db(db_path) as connection:
+        draft = connection.execute(
+            """
+            SELECT
+                format_type,
+                status
+            FROM tournament_drafts
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchone()
+
+        if draft is None:
+            raise ValueError(f"Tournament draft not found: {draft_id}")
+
+        if draft["status"] != "draft":
+            raise ValueError(
+                "New players can only be added while the tournament "
+                "is still a draft."
+            )
+
+    player_id = create_player(
+        db_path,
+        display_name,
+        active=active,
+        core_player=core_player,
+        notes=notes,
+    )
+
+    try:
+        draft = get_draft(db_path, draft_id)
+
+        if draft["format_type"] == FORMAT_DOUBLE_ELIMINATION:
+            next_seed = len(draft["participants"]) + 1
+            manual_seed = next_seed
+            bracket_seed = next_seed
+        else:
+            manual_seed = None
+            bracket_seed = None
+
+        add_participant(
+            db_path,
+            draft_id,
+            player_id,
+            manual_seed=manual_seed,
+            group_seed=None,
+            bracket_seed=bracket_seed,
+            starts_in="winners",
+        )
+    except Exception:
+        # Avoid leaving behind an unused player profile if adding fails.
+        with connect_db(db_path) as connection:
+            connection.execute(
+                """
+                DELETE FROM players
+                WHERE player_id = ?
+                """,
+                (player_id,),
+            )
+        raise
+
+    return player_id
 
 def add_participant(
     db_path: str | Path,

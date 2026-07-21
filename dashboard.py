@@ -943,6 +943,9 @@ def show_player_page(include_inactive: bool) -> None:
     initials = html.escape(player_initials(str(profile["player"])))
     rank_text = f"#{current_rank}" if current_rank is not None else "–"
 
+    current_elo = float(profile.get("current_elo") or 1000.0)
+    peak_elo = float(profile.get("peak_elo") or 1000.0)
+
     st.markdown(
         f"""
         <div style="
@@ -980,7 +983,7 @@ def show_player_page(include_inactive: bool) -> None:
                 <div>
                     <div style="opacity:0.65;font-size:0.78rem;">ELO</div>
                     <div style="font-size:1.45rem;font-weight:800;">
-                        {profile.get('current_elo', 1000):.1f}
+                        {current_elo:.1f}
                     </div>
                 </div>
                 <div>
@@ -996,7 +999,10 @@ def show_player_page(include_inactive: bool) -> None:
     )
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Peak Elo", f"{profile.get('peak_elo', 1000):.1f}")
+    col1.metric(
+        "Peak Elo",
+        f"{float(profile.get('peak_elo') or 1000.0):.1f}",
+    )
     col2.metric("Appearances", profile["appearances"])
     col3.metric("Matches", profile["decided_matches"])
     col4.metric("Win Rate", format_percent(profile["winrate"]))
@@ -2186,6 +2192,60 @@ def show_tournament_manager() -> None:
                 st.rerun()
     else:
         st.info("All existing players are already in this draft.")
+
+    with st.expander("Create New Player"):
+        with st.form(
+            f"create_player_{selected_draft_id}",
+            clear_on_submit=True,
+        ):
+            new_player_name = st.text_input(
+                "Player name",
+                placeholder="Enter the player's display name",
+            )
+
+            new_player_notes = st.text_area(
+                "Notes",
+                placeholder="Optional notes",
+            )
+
+            option_cols = st.columns(2)
+
+            with option_cols[0]:
+                new_player_active = st.checkbox(
+                    "Active player",
+                    value=True,
+                )
+
+            with option_cols[1]:
+                new_player_core = st.checkbox(
+                    "Core player",
+                    value=False,
+                )
+
+            create_player_submitted = st.form_submit_button(
+                "Create Player and Add to Draft",
+                type="primary",
+            )
+
+        if create_player_submitted:
+            try:
+                tournament_manager.create_player_and_add_to_draft(
+                    DB_PATH,
+                    selected_draft_id,
+                    new_player_name,
+                    active=new_player_active,
+                    core_player=new_player_core,
+                    notes=new_player_notes,
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.cache_data.clear()
+                st.success(
+                    f"{new_player_name.strip()} was created and "
+                    "added to the draft."
+                )
+                st.rerun()
 
     if draft["participants"]:
         participant_rows = []
