@@ -7,6 +7,7 @@ import sqlite3
 import uuid
 from pathlib import Path
 from typing import Any
+import smash_statistics as stats
 
 
 FORMAT_GROUP_STAGE = "group_stage_double_elimination"
@@ -723,6 +724,166 @@ def assign_manual_seeds(
             (draft_id,),
         )
 
+def get_automatic_seed_order(
+    db_path: str | Path,
+    draft_id: str,
+) -> list[dict[str, Any]]:
+    """Returns the suggested draft seeding based on activity and Elo."""
+
+    with connect_db(db_path) as connection:
+        draft = connection.execute(
+            """
+            SELECT
+                draft_id,
+                status
+            FROM tournament_drafts
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchone()
+
+        if draft is None:
+            raise ValueError(f"Tournament draft not found: {draft_id}")
+
+        if draft["status"] != "draft":
+            raise ValueError(
+                "Automatic seeding is only available while "
+                "the tournament is still a draft."
+            )
+
+        participant_rows = connection.execute(
+            """
+            SELECT
+                dp.player_id,
+                dp.manual_seed AS current_seed,
+                p.display_name,
+                p.active,
+                COUNT(DISTINCT tp.tournament_id) AS appearances
+            FROM tournament_draft_participants AS dp
+            JOIN players AS p
+              ON p.player_id = dp.player_id
+            LEFT JOIN tournament_participants AS tp
+              ON tp.player_id = p.player_id
+            WHERE dp.draft_id = ?
+            GROUP BY
+                dp.player_id,
+                dp.manual_seed,
+                p.display_name,
+                p.active
+            """,
+            (draft_id,),
+        ).fetchall()
+
+    if not participant_rows:
+        raise ValueError(
+            "At least one participant is required before generating seeds."
+        )
+
+    ranking = stats.get_elo_ranking(
+        db_path,
+        active_only=False,
+    )
+
+    ranking_by_player_id = {
+        str(entry["player_id"]): entry
+        for entry in ranking
+    }
+
+    seed_candidates: list[dict[str, Any]] = []
+
+    for row in participant_rows:
+        player_id = str(row["player_id"])
+        ranking_entry = ranking_by_player_id.get(player_id)
+
+        appearances = int(row["appearances"] or 0)
+        is_active = bool(row["active"])
+
+        if appearances == 0:
+            category = "new"
+            category_priority = 2
+        elif is_active:
+            category = "active"
+            category_priority = 0
+        else:
+            category = "inactive"
+            category_priority = 1
+
+        current_elo = (
+            float(ranking_entry["elo"])
+            if ranking_entry is not None
+            and ranking_entry.get("elo") is not None
+            else 1000.0
+        )
+
+        rated_matches = (
+            int(ranking_entry["rated_matches"])
+            if ranking_entry is not None
+            else 0
+        )
+
+        current_seed = (
+            int(row["current_seed"])
+            if row["current_seed"] is not None
+            else 999999
+        )
+
+        seed_candidates.append(
+            {
+                "player_id": player_id,
+                "player": str(row["display_name"]),
+                "category": category,
+                "category_priority": category_priority,
+                "elo": current_elo,
+                "rated_matches": rated_matches,
+                "current_seed": current_seed,
+            }
+        )
+
+    seed_candidates.sort(
+        key=lambda player: (
+            player["category_priority"],
+            -player["elo"],
+            -player["rated_matches"],
+            player["current_seed"],
+            player["player"].casefold(),
+        )
+    )
+
+    return [
+        {
+            **player,
+            "suggested_seed": index,
+        }
+        for index, player in enumerate(
+            seed_candidates,
+            start=1,
+        )
+    ]
+
+def apply_automatic_seeding(
+    db_path: str | Path,
+    draft_id: str,
+) -> list[dict[str, Any]]:
+    """Generates and saves the suggested draft seeding."""
+
+    suggested_order = get_automatic_seed_order(
+        db_path,
+        draft_id,
+    )
+
+    ordered_player_ids = [
+        str(player["player_id"])
+        for player in suggested_order
+    ]
+
+    save_participant_order(
+        db_path,
+        draft_id,
+        ordered_player_ids,
+    )
+
+    return suggested_order
+
 def save_participant_order(
     db_path: str | Path,
     draft_id: str,
@@ -750,12 +911,6 @@ def save_participant_order(
 
         if draft is None:
             raise ValueError(f"Tournament draft not found: {draft_id}")
-
-        if draft["format_type"] != FORMAT_DOUBLE_ELIMINATION:
-            raise ValueError(
-                "Manual participant order is currently only available "
-                "for double-elimination-only tournaments."
-            )
 
         if draft["status"] != "draft":
             raise ValueError(
@@ -803,6 +958,12 @@ def save_participant_order(
             ordered_player_ids,
             start=1,
         ):
+            bracket_seed = (
+                seed
+                if draft["format_type"] == FORMAT_DOUBLE_ELIMINATION
+                else None
+            )
+
             connection.execute(
                 """
                 UPDATE tournament_draft_participants
@@ -811,11 +972,11 @@ def save_participant_order(
                     bracket_seed = ?,
                     starts_in = 'winners'
                 WHERE draft_id = ?
-                  AND player_id = ?
+                AND player_id = ?
                 """,
                 (
                     seed,
-                    seed,
+                    bracket_seed,
                     draft_id,
                     player_id,
                 ),

@@ -2254,12 +2254,7 @@ def show_tournament_manager() -> None:
             participant_rows.append(
                 {
                     "Player": participant["player"],
-                    "Seed": (
-                        participant["manual_seed"]
-                        if draft["format_type"]
-                        == tournament_manager.FORMAT_DOUBLE_ELIMINATION
-                        else participant["group_seed"]
-                    ),
+                    "Initial Seed": participant["manual_seed"],
                     "Starts In": participant["starts_in"].title(),
                 }
             )
@@ -2270,115 +2265,139 @@ def show_tournament_manager() -> None:
             use_container_width=True,
         )
 
+        st.subheader("Initial Seeding")
+
+        st.caption(
+            "Generate a suggested order from player activity and Elo, "
+            "then fine-tune it manually."
+        )
+
+        if st.button(
+            "Generate Seeding from Elo",
+            key=f"generate_seeding_{selected_draft_id}",
+        ):
+            try:
+                tournament_manager.apply_automatic_seeding(
+                    DB_PATH,
+                    selected_draft_id,
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                order_state_key = (
+                    f"participant_order_{selected_draft_id}"
+                )
+
+                if order_state_key in st.session_state:
+                    del st.session_state[order_state_key]
+
+                st.cache_data.clear()
+                st.success("Automatic seeding generated.")
+                st.rerun()
+
+        st.caption(
+            "Active players are seeded first by Elo. Inactive returning "
+            "players follow, and new players are placed last. "
+            "Use the arrows to fine-tune the order."
+        )
+
+        ordered_participants = sorted(
+            draft["participants"],
+            key=lambda participant: (
+                participant["manual_seed"]
+                if participant["manual_seed"] is not None
+                else 9999,
+                str(participant["player"]).casefold(),
+            ),
+        )
+
+        order_state_key = (
+            f"participant_order_{selected_draft_id}"
+        )
+
+        stored_ids = [
+            str(participant["player_id"])
+            for participant in ordered_participants
+        ]
 
         if (
-            draft["format_type"]
-            == tournament_manager.FORMAT_DOUBLE_ELIMINATION
+            order_state_key not in st.session_state
+            or set(st.session_state[order_state_key])
+            != set(stored_ids)
         ):
-            st.subheader("Seeding")
+            st.session_state[order_state_key] = stored_ids
 
-            st.caption(
-                "Players initially receive seeds in the order they are "
-                "added. Use the arrows to fine-tune the order."
+        participant_by_id = {
+            str(participant["player_id"]): participant
+            for participant in draft["participants"]
+        }
+
+        current_order = st.session_state[order_state_key]
+
+        for index, player_id in enumerate(current_order):
+            participant = participant_by_id[player_id]
+
+            seed_col, player_col, up_col, down_col = st.columns(
+                [1, 6, 1, 1]
             )
 
-            ordered_participants = sorted(
-                draft["participants"],
-                key=lambda participant: (
-                    participant["manual_seed"]
-                    if participant["manual_seed"] is not None
-                    else 9999,
-                    str(participant["player"]).casefold(),
+            seed_col.markdown(f"**#{index + 1}**")
+            player_col.write(participant["player"])
+
+            move_up = up_col.button(
+                "↑",
+                key=(
+                    f"move_up_{selected_draft_id}_"
+                    f"{player_id}"
                 ),
+                disabled=index == 0,
             )
 
-            order_state_key = (
-                f"participant_order_{selected_draft_id}"
+            move_down = down_col.button(
+                "↓",
+                key=(
+                    f"move_down_{selected_draft_id}_"
+                    f"{player_id}"
+                ),
+                disabled=index == len(current_order) - 1,
             )
 
-            stored_ids = [
-                str(participant["player_id"])
-                for participant in ordered_participants
-            ]
-
-            if (
-                order_state_key not in st.session_state
-                or set(st.session_state[order_state_key])
-                != set(stored_ids)
-            ):
-                st.session_state[order_state_key] = stored_ids
-
-            participant_by_id = {
-                str(participant["player_id"]): participant
-                for participant in draft["participants"]
-            }
-
-            current_order = st.session_state[order_state_key]
-
-            for index, player_id in enumerate(current_order):
-                participant = participant_by_id[player_id]
-
-                seed_col, player_col, up_col, down_col = st.columns(
-                    [1, 6, 1, 1]
+            if move_up:
+                current_order[index - 1], current_order[index] = (
+                    current_order[index],
+                    current_order[index - 1],
                 )
+                st.session_state[order_state_key] = current_order
+                st.rerun()
 
-                seed_col.markdown(f"**#{index + 1}**")
-                player_col.write(participant["player"])
-
-                move_up = up_col.button(
-                    "↑",
-                    key=(
-                        f"move_up_{selected_draft_id}_"
-                        f"{player_id}"
-                    ),
-                    disabled=index == 0,
+            if move_down:
+                current_order[index], current_order[index + 1] = (
+                    current_order[index + 1],
+                    current_order[index],
                 )
+                st.session_state[order_state_key] = current_order
+                st.rerun()
 
-                move_down = down_col.button(
-                    "↓",
-                    key=(
-                        f"move_down_{selected_draft_id}_"
-                        f"{player_id}"
-                    ),
-                    disabled=index == len(current_order) - 1,
+        if st.button(
+            "Save Seeding Order",
+            type="primary",
+            key=f"save_order_{selected_draft_id}",
+        ):
+            try:
+                tournament_manager.save_participant_order(
+                    DB_PATH,
+                    selected_draft_id,
+                    list(st.session_state[order_state_key]),
                 )
-
-                if move_up:
-                    current_order[index - 1], current_order[index] = (
-                        current_order[index],
-                        current_order[index - 1],
-                    )
-                    st.session_state[order_state_key] = current_order
-                    st.rerun()
-
-                if move_down:
-                    current_order[index], current_order[index + 1] = (
-                        current_order[index + 1],
-                        current_order[index],
-                    )
-                    st.session_state[order_state_key] = current_order
-                    st.rerun()
-
-            if st.button(
-                "Save Seeding Order",
-                type="primary",
-                key=f"save_order_{selected_draft_id}",
-            ):
-                try:
-                    tournament_manager.save_participant_order(
-                        DB_PATH,
-                        selected_draft_id,
-                        list(st.session_state[order_state_key]),
-                    )
-                except ValueError as exc:
-                    st.error(str(exc))
-                else:
-                    st.cache_data.clear()
-                    st.session_state[order_state_key] = list(
-                        st.session_state[order_state_key]
-                    )
-                    st.success("Seeding order saved.")
-                    st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.cache_data.clear()
+                st.session_state[order_state_key] = list(
+                    st.session_state[order_state_key]
+                )
+                st.success("Seeding order saved.")
+                st.rerun()
 
 
         remove_player_by_name = {
