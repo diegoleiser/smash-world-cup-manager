@@ -986,66 +986,6 @@ def tournament_elo_changes(
     )
 
 
-def show_h2h_drilldown(
-    left_name: str,
-    right_name: str,
-    player_ids: dict[str, str],
-) -> None:
-    """Shows details and match history for a selected player pair."""
-
-    if left_name == right_name:
-        st.info("Select two different players.")
-        return
-
-    h2h = load_head_to_head(
-        player_ids[left_name],
-        player_ids[right_name],
-    )
-
-    st.subheader(f"{left_name} vs. {right_name}")
-    cols = st.columns(4)
-    cols[0].metric(f"Wins {left_name}", h2h["player_a"]["wins"])
-    cols[1].metric(f"Wins {right_name}", h2h["player_b"]["wins"])
-    cols[2].metric(
-        f"Win Rate {left_name}",
-        format_percent(h2h["player_a"]["winrate"]),
-    )
-    cols[3].metric("Head-to-Head Matches", h2h["decided_matches"])
-
-    if h2h["last_match"]:
-        last = h2h["last_match"]
-        round_text = last["round_label"] or last["stage"] or "Unknown round"
-        score_text = last["score"] or "–"
-        st.info(
-            f"**{last['tournament']} · {round_text}** — "
-            f"{last['winner'] or 'Unknown winner'} won {score_text}."
-        )
-
-    if h2h["history"]:
-        rows = []
-        for match in reversed(h2h["history"]):
-            rows.append(
-                {
-                    "Tournament": match["tournament"],
-                    "Date": match["date"],
-                    "Round": (
-                        match["round_label"]
-                        or match["stage"]
-                        or "–"
-                    ),
-                    "Winner": match["winner"] or "Pending",
-                    "Result": match["score"] or "–",
-                }
-            )
-        st.dataframe(
-            pd.DataFrame(rows),
-            hide_index=True,
-            use_container_width=True,
-        )
-    else:
-        st.info("These two players have not faced each other yet.")
-
-
 def show_player_page(include_inactive: bool) -> None:
     st.title("👤 Player profile")
 
@@ -1335,76 +1275,141 @@ def show_player_page(include_inactive: bool) -> None:
             st.info("No opponent records are available for this player yet.")
 
 
-
-def comparison_value(
-    left: float | int | None,
-    right: float | int | None,
-    *,
-    lower_is_better: bool = False,
-) -> tuple[str, str]:
-    """Returns markers for the better comparison value."""
-
-    if left is None or right is None or left == right:
-        return "", ""
-
-    left_better = left < right if lower_is_better else left > right
-    return ("●", "") if left_better else ("", "●")
-
-
-def show_comparison(include_inactive: bool) -> None:
-    st.title("🤝 Player Comparison")
+def show_matchups(include_inactive: bool) -> None:
+    st.title("🤝 Matchups")
     st.caption(
-        "Career statistics, head-to-head matches, and Elo and ranking development "
-        "for two players"
+        "Select a matchup in the head-to-head matrix to open the "
+        "full player comparison."
     )
 
     players = load_players(include_inactive)
+
     if len(players) < 2:
-        st.warning("At least two players are required for a comparison.")
+        st.warning(
+            "At least two players are required for a matchup."
+        )
         return
 
-    names = [player["display_name"] for player in players]
     player_by_name = {
-        player["display_name"]: str(player["player_id"])
+        str(player["display_name"]): str(player["player_id"])
         for player in players
     }
 
-    default_right = 1 if len(names) > 1 else 0
-    select_left, versus, select_right = st.columns([5, 1, 5])
+    names = list(player_by_name)
 
-    with select_left:
-        left_name = str(
-            st.selectbox(
-                "Player 1",
-                names,
-                index=0,
-                key="comparison_left",
+    records, winrates = load_h2h_matrix(
+        include_inactive
+    )
+
+    if records.empty:
+        st.warning(
+            "No players were found for the matrix."
+        )
+        return
+
+    def cell_style(value: Any) -> str:
+        if pd.isna(value):
+            return ""
+
+        if value > 0.5:
+            return (
+                "background-color: "
+                "rgba(46, 160, 67, 0.28); "
+                "font-weight: 600;"
             )
-        )
 
-    with versus:
-        st.markdown(
-            "<div style='text-align:center; padding-top:2rem; "
-            "font-size:1.5rem; font-weight:700;'>VS</div>",
-            unsafe_allow_html=True,
-        )
-
-    with select_right:
-        right_options = [name for name in names if name != left_name]
-        preferred_right = names[default_right]
-        right_index = (
-            right_options.index(preferred_right)
-            if preferred_right in right_options
-            else 0
-        )
-        right_name = str(
-            st.selectbox(
-                "Player 2",
-                right_options,
-                index=right_index,
-                key="comparison_right",
+        if value < 0.5:
+            return (
+                "background-color: "
+                "rgba(248, 81, 73, 0.25); "
+                "font-weight: 600;"
             )
+
+        return (
+            "background-color: "
+            "rgba(139, 148, 158, 0.22); "
+            "font-weight: 600;"
         )
+
+    styled = records.style.apply(
+        lambda row: [
+            cell_style(
+                winrates.loc[
+                    str(row.name),
+                    str(column),
+                ]
+            )
+            for column in records.columns
+        ],
+        axis=1,
+    )
+
+    selected_pair: tuple[str, str] | None = None
+
+    try:
+        selection_event = st.dataframe(
+            styled,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="single-cell",
+            key="matchups_matrix_selection",
+        )
+
+        selection_state = selection_event.get(
+            "selection",
+            {},
+        )
+
+        selected_cells = selection_state.get(
+            "cells",
+            [],
+        )
+
+        if selected_cells:
+            row_index, column_name = (
+                selected_cells[0]
+            )
+
+            row_index = int(row_index)
+            right_name = str(column_name)
+
+            if (
+                0 <= row_index < len(names)
+                and right_name in player_by_name
+            ):
+                left_name = names[row_index]
+
+                if left_name != right_name:
+                    selected_pair = (
+                        left_name,
+                        right_name,
+                    )
+
+    except (
+        AttributeError,
+        KeyError,
+        TypeError,
+    ):
+        st.dataframe(
+            styled,
+            use_container_width=True,
+        )
+
+    st.caption(
+        "Green = winning record, red = losing record, "
+        "grey = tied record."
+    )
+
+    if selected_pair is None:
+        st.info(
+            "Select a matchup in the matrix to open "
+            "the comparison."
+        )
+        return
+
+    left_name, right_name = selected_pair
+
+    st.divider()
 
     left_id = player_by_name[left_name]
     right_id = player_by_name[right_name]
@@ -1424,23 +1429,58 @@ def show_comparison(include_inactive: bool) -> None:
     left_rank = ranks.get(left_id)
     right_rank = ranks.get(right_id)
 
-    st.divider()
-    header_left, header_score, header_right = st.columns([4, 3, 4])
+    header_left, header_score, header_right = st.columns(
+        [4, 3, 4]
+    )
+
+    left_titles = int(
+        left_profile.get("titles") or 0
+    )
+    right_titles = int(
+        right_profile.get("titles") or 0
+    )
+
+    left_title_label = (
+        "Title"
+        if left_titles == 1
+        else "Titles"
+    )
+    right_title_label = (
+        "Title"
+        if right_titles == 1
+        else "Titles"
+    )
 
     with header_left:
         st.markdown(f"## {left_name}")
-        st.metric(
-            "Current Elo",
-            f"{left_profile.get('current_elo', 1000):.1f}",
+        st.markdown(
+            (
+                "<div style='"
+                "font-size:1rem;"
+                "font-weight:600;"
+                "opacity:0.65;"
+                "'>"
+                f"#{left_rank or '–'} · "
+                f"{float(left_profile.get('current_elo') or 1000.0):.1f} Elo · "
+                f"{left_titles} {left_title_label}"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
         )
 
     with header_score:
         st.markdown(
-            "<div style='text-align:center; margin-top:0.5rem;'>"
-            "<div style='font-size:0.9rem; opacity:0.7;'>HEAD-TO-HEAD</div>"
-            f"<div style='font-size:2.5rem; font-weight:800;'>"
-            f"{h2h['player_a']['wins']} : {h2h['player_b']['wins']}"
-            "</div></div>",
+            (
+                "<div style='text-align:center;'>"
+                "<div style='font-size:0.9rem; opacity:0.7;'>"
+                "HEAD-TO-HEAD"
+                "</div>"
+                "<div style='font-size:2.5rem; font-weight:800;'>"
+                f"{h2h['player_a']['wins']} : "
+                f"{h2h['player_b']['wins']}"
+                "</div>"
+                "</div>"
+            ),
             unsafe_allow_html=True,
         )
 
@@ -1449,39 +1489,29 @@ def show_comparison(include_inactive: bool) -> None:
             f"<h2 style='text-align:right;'>{right_name}</h2>",
             unsafe_allow_html=True,
         )
-        st.metric(
-            "Current Elo",
-            f"{right_profile.get('current_elo', 1000):.1f}",
+        st.markdown(
+            (
+                "<div style='"
+                "text-align:right;"
+                "font-size:1rem;"
+                "font-weight:600;"
+                "opacity:0.65;"
+                "'>"
+                f"#{right_rank or '–'} · "
+                f"{float(right_profile.get('current_elo') or 1000.0):.1f} Elo · "
+                f"{right_titles} {right_title_label}"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
         )
 
     categories = [
-        (
-            "Current Elo",
-            left_profile.get("current_elo"),
-            right_profile.get("current_elo"),
-            False,
-            lambda value: f"{value:.1f}" if value is not None else "–",
-        ),
         (
             "Peak Elo",
             left_profile.get("peak_elo"),
             right_profile.get("peak_elo"),
             False,
             lambda value: f"{value:.1f}" if value is not None else "–",
-        ),
-        (
-            "Current Rank",
-            left_rank,
-            right_rank,
-            True,
-            lambda value: f"#{value}" if value is not None else "–",
-        ),
-        (
-            "Titles",
-            left_profile.get("titles", 0),
-            right_profile.get("titles", 0),
-            False,
-            lambda value: str(value),
         ),
         (
             "Appearances",
@@ -1520,75 +1550,229 @@ def show_comparison(include_inactive: bool) -> None:
         ),
     ]
 
-    rows = []
-    for label, left_value, right_value, lower_is_better, formatter in categories:
-        left_mark, right_mark = comparison_value(
+    last_match = h2h.get("last_match")
+
+    if last_match:
+        last_result = (
+            last_match.get("score")
+            or "Unknown result"
+        )
+
+        last_meeting = (
+            f"{last_match.get('winner') or 'Unknown'} "
+            f"{last_result}"
+        )
+    else:
+        last_meeting = "–"
+
+    streak_player = "–"
+    streak_text = "–"
+
+    recent_history = list(
+        reversed(h2h.get("history") or [])
+    )
+
+    if recent_history:
+        latest_winner = recent_history[0].get(
+            "winner"
+        )
+
+        streak_count = 0
+
+        for match in recent_history:
+            if match.get("winner") != latest_winner:
+                break
+
+            streak_count += 1
+
+        if latest_winner:
+            streak_player = str(latest_winner)
+            streak_text = f"W{streak_count}"
+
+    rivalry_summary = (
+        narratives.generate_rivalry_summary(h2h)
+    )
+
+    summary_parts = [
+        rivalry_summary,
+    ]
+
+    if last_match:
+        score = (
+            last_match.get("score")
+            or "Unknown result"
+        )
+
+        summary_parts.append(
+            (
+                f"Last meeting: "
+                f"{last_match.get('winner') or 'Unknown'} "
+                f"won at "
+                f"{last_match.get('tournament') or 'an unknown tournament'} "
+                f"({score})."
+            )
+        )
+
+    st.info(
+        " ".join(summary_parts)
+    )
+
+    tab_overview, tab_history, tab_matches = st.tabs(
+        [
+            "Overview",
+            "Elo & Ranking",
+            "Match History",
+        ]
+    )
+
+    with tab_overview:
+        st.subheader("Head-to-Head Details")
+
+        detail_cols = st.columns(3)
+
+        detail_cols[0].metric(
+            "Games Record",
+            (
+                f"{h2h['player_a']['games_won']}–"
+                f"{h2h['player_b']['games_won']}"
+            ),
+        )
+
+        detail_cols[1].metric(
+            "Current Streak",
+            streak_player,
+            streak_text,
+            delta_color="off",
+        )
+
+        detail_cols[2].metric(
+            "Last Meeting",
+            last_meeting,
+        )
+
+        st.subheader("Career Comparison")
+
+        comparison_rows_html = []
+
+        for (
+            label,
             left_value,
             right_value,
-            lower_is_better=lower_is_better,
+            lower_is_better,
+            formatter,
+        ) in categories:
+            left_better = False
+            right_better = False
+
+            if (
+                left_value is not None
+                and right_value is not None
+                and left_value != right_value
+            ):
+                if lower_is_better:
+                    left_better = left_value < right_value
+                else:
+                    left_better = left_value > right_value
+
+                right_better = not left_better
+
+            left_style = (
+                "background:rgba(34,197,94,0.12);"
+                "font-weight:750;"
+                if left_better
+                else ""
+            )
+
+            right_style = (
+                "background:rgba(34,197,94,0.12);"
+                "font-weight:750;"
+                if right_better
+                else ""
+            )
+
+            comparison_rows_html.append(
+                (
+                    "<div class='comparison-cell comparison-value' "
+                    f"style='{left_style}'>"
+                    f"{html.escape(formatter(left_value))}"
+                    "</div>"
+                    "<div class='comparison-cell comparison-label'>"
+                    f"{html.escape(label)}"
+                    "</div>"
+                    "<div class='comparison-cell comparison-value' "
+                    f"style='{right_style}'>"
+                    f"{html.escape(formatter(right_value))}"
+                    "</div>"
+                )
+            )
+
+        comparison_table_html = (
+            "<style>"
+            ".comparison-grid {"
+            "display:grid;"
+            "grid-template-columns:1fr 1fr 1fr;"
+            "overflow:hidden;"
+            "border:1px solid rgba(128,128,128,0.28);"
+            "border-radius:0.8rem;"
+            "}"
+            ".comparison-cell {"
+            "min-height:3.4rem;"
+            "display:flex;"
+            "align-items:center;"
+            "padding:0.75rem 1rem;"
+            "border-bottom:1px solid rgba(128,128,128,0.22);"
+            "}"
+            ".comparison-cell:nth-last-child(-n+3) {"
+            "border-bottom:none;"
+            "}"
+            ".comparison-cell:not(:nth-child(3n)) {"
+            "border-right:1px solid rgba(128,128,128,0.22);"
+            "}"
+            ".comparison-header {"
+            "min-height:3rem;"
+            "font-weight:700;"
+            "opacity:0.7;"
+            "background:rgba(128,128,128,0.08);"
+            "}"
+            ".comparison-label {"
+            "justify-content:center;"
+            "text-align:center;"
+            "font-weight:650;"
+            "}"
+            ".comparison-value {"
+            "font-size:1.05rem;"
+            "}"
+            ".comparison-value:nth-child(3n) {"
+            "justify-content:flex-end;"
+            "text-align:right;"
+            "}"
+            "</style>"
+            "<div class='comparison-grid'>"
+            "<div class='comparison-cell comparison-header'>"
+            f"{html.escape(left_name)}"
+            "</div>"
+            "<div class='comparison-cell comparison-header comparison-label'>"
+            "Category"
+            "</div>"
+            "<div class='comparison-cell comparison-header' "
+            "style='justify-content:flex-end;'>"
+            f"{html.escape(right_name)}"
+            "</div>"
+            f"{''.join(comparison_rows_html)}"
+            "</div>"
         )
-        rows.append(
-            {
-                left_name: (
-                    f"{left_mark} {formatter(left_value)}".strip()
-                ),
-                "Category": label,
-                right_name: (
-                    f"{formatter(right_value)} {right_mark}".strip()
-                ),
-            }
+
+        st.markdown(
+            comparison_table_html,
+            unsafe_allow_html=True,
         )
 
-    st.subheader("Career Comparison")
-    st.dataframe(
-        pd.DataFrame(rows),
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            left_name: st.column_config.TextColumn(width="medium"),
-            "Category": st.column_config.TextColumn(width="medium"),
-            right_name: st.column_config.TextColumn(width="medium"),
-        },
-    )
-    st.caption("● marks the better value in each category.")
-
-    st.subheader("Head-to-Head")
-    h2h_cols = st.columns(4)
-    h2h_cols[0].metric(
-        f"Wins {left_name}",
-        h2h["player_a"]["wins"],
-    )
-    h2h_cols[1].metric(
-        f"Wins {right_name}",
-        h2h["player_b"]["wins"],
-    )
-    h2h_cols[2].metric(
-        f"Games {left_name}",
-        h2h["player_a"]["games_won"],
-    )
-    h2h_cols[3].metric(
-        f"Games {right_name}",
-        h2h["player_b"]["games_won"],
-    )
-
-    rivalry_summary = narratives.generate_rivalry_summary(h2h)
-    st.info(rivalry_summary)
-
-    if h2h["last_match"]:
-        last = h2h["last_match"]
-        score = last["score"] or "Unknown result"
-        st.info(
-            f"Last set: **{last['winner'] or 'No winner'}** won "
-            f"at {last['tournament']} ({score})."
+        st.caption(
+            "The better value in each category is highlighted."
         )
-    elif not h2h["history"]:
-        st.info("These two players have not faced each other yet.")
 
-    tab_elo, tab_rank, tab_matches = st.tabs(
-        ["Combined Elo History", "Combined Ranking History", "Head-to-Head Matches"]
-    )
-
-    with tab_elo:
+    with tab_history:
+        st.subheader("Combined Elo History")
         timeline_rows = []
         for player_name, player_timeline in (
             (left_name, left_timeline),
@@ -1647,7 +1831,7 @@ def show_comparison(include_inactive: bool) -> None:
         else:
             st.info("No Elo history is available for these players yet.")
 
-    with tab_rank:
+        st.subheader("Combined Ranking History")
         rank_rows = []
         for player_name, player_timeline in (
             (left_name, left_timeline),
@@ -1708,15 +1892,89 @@ def show_comparison(include_inactive: bool) -> None:
     with tab_matches:
         if h2h["history"]:
             match_rows = []
+
+            bracket_labels_by_tournament: dict[
+                int,
+                dict[str, str],
+            ] = {}
+
             for match in reversed(h2h["history"]):
-                round_text = match["round_label"] or match["stage"] or "–"
+                tournament_number = int(
+                    match["tournament_number"]
+                )
+
+                if match["stage"] == "knockout":
+                    if (
+                        tournament_number
+                        not in bracket_labels_by_tournament
+                    ):
+                        tournament_detail = (
+                            load_tournament_detail(
+                                tournament_number
+                            )
+                        )
+
+                        tournament_bracket_matches = (
+                            build_archived_bracket_matches(
+                                tournament_detail["matches"]
+                            )
+                        )
+
+                        bracket_labels_by_tournament[
+                            tournament_number
+                        ] = {
+                            str(bracket_match["bracket_match_id"]):
+                                str(bracket_match["round_label"])
+                            for bracket_match
+                            in tournament_bracket_matches
+                        }
+
+                    round_text = (
+                        bracket_labels_by_tournament[
+                            tournament_number
+                        ].get(
+                            str(match["match_id"]),
+                            str(
+                                match["round_label"]
+                                or "Knockout"
+                            ),
+                        )
+                    )
+
+                else:
+                    raw_round = (
+                        match["round_label"]
+                        or match.get("challonge_round")
+                    )
+
+                    if match["stage"] == "group" and raw_round is not None:
+                        round_text = f"Group Round {raw_round}"
+                    else:
+                        round_text = str(
+                            raw_round
+                            or match["stage"]
+                            or "–"
+                        )
+
                 match_rows.append(
                     {
                         "Tournament": match["tournament"],
-                        "Date": match["date"],
+                        "Date": (
+                            pd.to_datetime(
+                                match["date"]
+                            ).strftime("%d %b %Y")
+                            if match["date"]
+                            else "–"
+                        ),
                         "Round": round_text,
-                        "Winner": match["winner"] or "Pending",
-                        "Result": match["score"] or "–",
+                        "Winner": (
+                            match["winner"]
+                            or "Pending"
+                        ),
+                        "Result": (
+                            match["score"]
+                            or "–"
+                        ),
                     }
                 )
 
@@ -1727,120 +1985,6 @@ def show_comparison(include_inactive: bool) -> None:
             )
         else:
             st.info("No head-to-head matches available.")
-
-
-def show_h2h_matrix(include_inactive: bool) -> None:
-    st.title("🧩 Head-to-Head Matrix")
-    st.caption(
-        "Each cell shows the row player’s record against the column player. "
-        "Select a cell to open all matches."
-    )
-
-    players = load_players(include_inactive)
-    player_ids = {
-        str(player["display_name"]): str(player["player_id"])
-        for player in players
-    }
-    names = list(player_ids)
-
-    records, winrates = load_h2h_matrix(include_inactive)
-    if records.empty:
-        st.warning("No players found for the matrix.")
-        return
-
-    def cell_style(value: Any) -> str:
-        if pd.isna(value):
-            return ""
-        if value > 0.5:
-            return "background-color: rgba(46, 160, 67, 0.28); font-weight: 600;"
-        if value < 0.5:
-            return "background-color: rgba(248, 81, 73, 0.25); font-weight: 600;"
-        return "background-color: rgba(139, 148, 158, 0.22); font-weight: 600;"
-
-    styled = records.style.apply(
-        lambda row: [
-            cell_style(winrates.loc[str(row.name), str(column)])
-            for column in records.columns
-        ],
-        axis=1,
-    )
-
-    selected_pair: tuple[str, str] | None = None
-    try:
-        selection_event = st.dataframe(
-            styled,
-            use_container_width=True,
-            on_select="rerun",
-            selection_mode="single-cell",
-            key="h2h_matrix_selection",
-        )
-
-        selection_state = selection_event.get(
-            "selection",
-            {},
-        )
-
-        selected_cells = selection_state.get(
-            "cells",
-            [],
-        )
-
-        if selected_cells:
-            row_index, column_name = selected_cells[0]
-            row_index = int(row_index)
-            right_name = str(column_name)
-
-            if (
-                0 <= row_index < len(names)
-                and right_name in player_ids
-            ):
-                selected_pair = (
-                    names[row_index],
-                    right_name,
-                )
-
-    except (
-        AttributeError,
-        KeyError,
-        TypeError,
-    ):
-        st.dataframe(
-            styled,
-            use_container_width=True,
-        )
-
-    st.caption(
-        "Green = winning record, red = losing record, "
-        "grey = tied record."
-    )
-
-    st.divider()
-    st.subheader("Open matchup")
-
-    if selected_pair is None:
-        select_left, select_right = st.columns(2)
-        with select_left:
-            left_name = str(
-                st.selectbox(
-                    "Row player",
-                    names,
-                    key="matrix_left_player",
-                )
-            )
-        with select_right:
-            right_options = [name for name in names if name != left_name]
-            right_name = str(
-                st.selectbox(
-                    "Column player",
-                    right_options,
-                    key="matrix_right_player",
-                )
-            )
-    else:
-        left_name, right_name = selected_pair
-        st.success(f"Selected cell: **{left_name} vs. {right_name}**")
-
-    show_h2h_drilldown(left_name, right_name, player_ids)
 
 def challonge_identifier_order(
     identifier: str | None,
@@ -2403,6 +2547,23 @@ def show_archived_match_dialog(
         )
         st.rerun()
 
+def format_ordinal(value: int) -> str:
+    """Format an integer as an English ordinal."""
+
+    if 10 <= value % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {
+            1: "st",
+            2: "nd",
+            3: "rd",
+        }.get(
+            value % 10,
+            "th",
+        )
+
+    return f"{value}{suffix}"
+
 def show_tournaments() -> None:
     st.title("🏆 Tournaments")
     tournaments = load_tournaments()
@@ -2494,37 +2655,182 @@ def show_tournaments() -> None:
     st.info(tournament_recap)
 
     (
-        tab_overview,
         tab_bracket,
+        tab_overview,
         tab_matches,
         tab_elo,
     ) = st.tabs(
         [
-            "Participants & Results",
             "Bracket",
+            "Participants & Results",
             "All Matches",
             "Elo After Tournament",
         ]
     )
 
     with tab_overview:
-        st.dataframe(
-            pd.DataFrame(
-                [
-                    {
-                        "Placement": row["placement"],
-                        "Players": row["player"],
-                        "Seed": row["seed"],
-                    }
-                    for row in participants
-                ]
-            ),
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "Placement": st.column_config.NumberColumn(format="%d"),
-                "Seed": st.column_config.NumberColumn(format="%d"),
-            },
+        st.subheader("Final Standings")
+
+        placement_counts: dict[int, int] = {}
+
+        for participant in participants:
+            placement = participant["placement"]
+
+            if placement is None:
+                continue
+
+            placement_number = int(placement)
+
+            placement_counts[placement_number] = (
+                placement_counts.get(
+                    placement_number,
+                    0,
+                )
+                + 1
+            )
+
+        placement_icons = {
+            1: "🥇",
+            2: "🥈",
+            3: "🥉",
+        }
+
+        for participant in participants:
+            placement = participant["placement"]
+            seed = participant["seed"]
+
+            if placement is None:
+                placement_text = "–"
+                placement_number = None
+            else:
+                placement_number = int(placement)
+
+                ordinal = format_ordinal(
+                    placement_number
+                )
+
+                if placement_counts.get(
+                    placement_number,
+                    0,
+                ) > 1:
+                    ordinal = f"T-{ordinal}"
+
+                icon = placement_icons.get(
+                    placement_number,
+                    "",
+                )
+
+                placement_text = (
+                    f"{icon} {ordinal}".strip()
+                )
+
+            if seed is None:
+                seed_text = "Not seeded"
+                seed_performance = "–"
+                performance_color = "rgba(255,255,255,0.62)"
+
+            else:
+                seed_number = int(seed)
+                seed_text = f"Seed #{seed_number}"
+
+                if placement_number is None:
+                    seed_performance = "–"
+                    performance_color = "rgba(255,255,255,0.62)"
+
+                elif placement_number < seed_number:
+                    improvement = (
+                        seed_number
+                        - placement_number
+                    )
+
+                    seed_performance = (
+                        f"▲ {improvement}"
+                    )
+
+                    performance_color = "#3fb950"
+
+                elif placement_number > seed_number:
+                    decline = (
+                        placement_number
+                        - seed_number
+                    )
+
+                    seed_performance = (
+                        f"▼ {decline}"
+                    )
+
+                    performance_color = "#f85149"
+
+                else:
+                    seed_performance = "= Seed"
+                    performance_color = "rgba(255,255,255,0.62)"
+
+            with st.container(border=True):
+                st.markdown(
+                    (
+                        "<div style='"
+                        "display:grid;"
+                        "grid-template-columns:1.4fr 3.5fr 1.8fr 1.5fr;"
+                        "align-items:center;"
+                        "min-height:5.2rem;"
+                        "gap:1rem;"
+                        "'>"
+
+                        "<div style='"
+                        "display:flex;"
+                        "align-items:center;"
+                        "justify-content:flex-end;"
+                        "text-align:right;"
+                        "font-size:1.55rem;"
+                        "font-weight:800;"
+                        "padding-right:0.5rem;"
+                        "'>"
+                        f"{html.escape(placement_text)}"
+                        "</div>"
+
+                        "<div style='"
+                        "display:flex;"
+                        "align-items:center;"
+                        "justify-content:flex-start;"
+                        "text-align:left;"
+                        "font-size:1.55rem;"
+                        "font-weight:800;"
+                        "padding-left:0.5rem;"
+                        "'>"
+                        f"{html.escape(str(participant['player']))}"
+                        "</div>"
+
+                        "<div style='"
+                        "display:flex;"
+                        "align-items:center;"
+                        "justify-content:center;"
+                        "text-align:center;"
+                        "font-size:1rem;"
+                        "font-weight:700;"
+                        "'>"
+                        f"{html.escape(seed_text)}"
+                        "</div>"
+
+                        "<div style='"
+                        "display:flex;"
+                        "align-items:center;"
+                        "justify-content:center;"
+                        "text-align:center;"
+                        "font-size:1rem;"
+                        "font-weight:800;"
+                        f"color:{performance_color};"
+                        "'>"
+                        f"{html.escape(seed_performance)}"
+                        "</div>"
+
+                        "</div>"
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+        st.caption(
+            "▲ finished above the initial seed · "
+            "▼ finished below the initial seed"
         )
 
     with tab_bracket:
@@ -5175,8 +5481,7 @@ def main() -> None:
         [
             "Home",
             "Players",
-            "Comparison",
-            "H2H-Matrix",
+            "Matchups",
             "Tournaments",
             "Tournament Manager",
         ],
@@ -5200,10 +5505,8 @@ def main() -> None:
         show_home(include_inactive)
     elif page == "Players":
         show_player_page(include_inactive)
-    elif page == "Comparison":
-        show_comparison(include_inactive)
-    elif page == "H2H-Matrix":
-        show_h2h_matrix(include_inactive)
+    elif page == "Matchups":
+        show_matchups(include_inactive)
     elif page == "Tournaments":
         show_tournaments()
     elif page == "Tournament Manager":
