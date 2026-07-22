@@ -536,19 +536,25 @@ def load_tournament_detail(tournament_number: int) -> dict[str, Any]:
         matches = connection.execute(
             """
             SELECT
+                m.match_id,
                 m.stage,
                 m.round_label,
                 m.bracket_side,
+                m.challonge_match_id,
+                m.challonge_identifier,
+                m.challonge_round,
+                m.suggested_play_order,
+                m.player_1_id,
                 p1.display_name AS player_1,
+                m.player_2_id,
                 p2.display_name AS player_2,
+                m.winner_id,
                 winner.display_name AS winner,
                 m.player_1_score,
                 m.player_2_score,
                 m.score_known,
                 m.walkover,
-                m.completed_at,
-                m.suggested_play_order,
-                m.match_id
+                m.completed_at
             FROM matches AS m
             JOIN players AS p1 ON p1.player_id = m.player_1_id
             JOIN players AS p2 ON p2.player_id = m.player_2_id
@@ -1769,6 +1775,334 @@ def show_h2h_matrix(include_inactive: bool) -> None:
 
     show_h2h_drilldown(left_name, right_name, player_ids)
 
+def build_archived_bracket_matches(
+    matches: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Convert archived knockout matches into bracket-card data."""
+
+    knockout_matches = [
+        match
+        for match in matches
+        if match["stage"] == "knockout"
+        and match["challonge_round"] is not None
+    ]
+
+    if not knockout_matches:
+        return []
+
+    positive_rounds = sorted(
+        {
+            int(match["challonge_round"])
+            for match in knockout_matches
+            if int(match["challonge_round"]) > 0
+        }
+    )
+
+    negative_rounds = sorted(
+        {
+            abs(int(match["challonge_round"]))
+            for match in knockout_matches
+            if int(match["challonge_round"]) < 0
+        }
+    )
+
+    grand_final_round = (
+        positive_rounds[-1]
+        if positive_rounds
+        else None
+    )
+
+    winners_final_round = (
+        positive_rounds[-2]
+        if len(positive_rounds) >= 2
+        else None
+    )
+
+    losers_final_round = (
+        negative_rounds[-1]
+        if negative_rounds
+        else None
+    )
+
+    matches_per_round: dict[
+        tuple[str, int],
+        int,
+    ] = {}
+
+    bracket_matches: list[dict[str, Any]] = []
+
+    for match in knockout_matches:
+        challonge_round = int(
+            match["challonge_round"]
+        )
+
+        if challonge_round == grand_final_round:
+            bracket_side = "finals"
+            round_number = 1
+            round_label = "Grand Final"
+            match_type = "grand_final"
+            match_code = "GF"
+
+        elif challonge_round == winners_final_round:
+            bracket_side = "winners"
+            round_number = challonge_round
+            round_label = "Winners Final"
+            match_type = "winners_final"
+            match_code = "WF"
+
+        elif (
+            challonge_round < 0
+            and abs(challonge_round)
+            == losers_final_round
+        ):
+            bracket_side = "losers"
+            round_number = abs(challonge_round)
+            round_label = "Losers Final"
+            match_type = "losers_final"
+            match_code = "LF"
+
+        elif challonge_round > 0:
+            bracket_side = "winners"
+            round_number = challonge_round
+            round_label = (
+                f"Winners Round {round_number}"
+            )
+            match_type = "standard"
+            match_code = ""
+
+        else:
+            bracket_side = "losers"
+            round_number = abs(challonge_round)
+            round_label = (
+                f"Losers Round {round_number}"
+            )
+            match_type = "standard"
+            match_code = ""
+
+        round_key = (
+            bracket_side,
+            round_number,
+        )
+
+        match_number = (
+            matches_per_round.get(round_key, 0)
+            + 1
+        )
+
+        matches_per_round[round_key] = (
+            match_number
+        )
+
+        if not match_code:
+            prefix = (
+                "W"
+                if bracket_side == "winners"
+                else "L"
+            )
+
+            match_code = (
+                f"{prefix}{round_number}"
+                f"M{match_number}"
+            )
+
+        if match["walkover"]:
+            status = "forfeit"
+
+        elif match["winner"]:
+            status = "completed"
+
+        else:
+            status = "waiting"
+
+        bracket_matches.append(
+            {
+                "bracket_match_id": str(
+                    match["match_id"]
+                ),
+                "match_code": match_code,
+                "bracket_side": bracket_side,
+                "round_number": round_number,
+                "match_number": match_number,
+                "round_label": round_label,
+                "match_type": match_type,
+                "player_1_id": (
+                    str(match["player_1_id"])
+                    if match["player_1_id"] is not None
+                    else None
+                ),
+                "player_1_name": match["player_1"],
+
+                "player_2_id": (
+                    str(match["player_2_id"])
+                    if match["player_2_id"] is not None
+                    else None
+                ),
+                "player_2_name": match["player_2"],
+
+                "winner_id": (
+                    str(match["winner_id"])
+                    if match["winner_id"] is not None
+                    else None
+                ),
+                "winner_name": match["winner"],
+                "player_1_score": (
+                    match["player_1_score"]
+                    if match["score_known"]
+                    else None
+                ),
+                "player_2_score": (
+                    match["player_2_score"]
+                    if match["score_known"]
+                    else None
+                ),
+                "status": status,
+            }
+        )
+
+    return bracket_matches
+
+def build_archived_bracket_routes(
+    matches: list[dict[str, Any]],
+    bracket_matches: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Reconstruct bracket routes from later player appearances."""
+
+    knockout_matches = [
+        match
+        for match in matches
+        if match["stage"] == "knockout"
+        and match["challonge_round"] is not None
+    ]
+
+    if not knockout_matches or not bracket_matches:
+        return []
+
+    bracket_code_by_match_id = {
+        str(match["bracket_match_id"]): str(
+            match["match_code"]
+        )
+        for match in bracket_matches
+    }
+
+    def play_order(
+        match: dict[str, Any],
+    ) -> tuple[int, str]:
+        return (
+            int(match["suggested_play_order"])
+            if match["suggested_play_order"] is not None
+            else 999999,
+            str(match["match_id"]),
+        )
+
+    ordered_matches = sorted(
+        knockout_matches,
+        key=play_order,
+    )
+
+    routes: list[dict[str, Any]] = []
+    existing_routes: set[
+        tuple[str, str, str, int]
+    ] = set()
+
+    for source_index, source_match in enumerate(
+        ordered_matches
+    ):
+        source_code = bracket_code_by_match_id.get(
+            str(source_match["match_id"])
+        )
+
+        if source_code is None:
+            continue
+
+        winner_name = (
+            str(source_match["winner"])
+            if source_match["winner"]
+            else None
+        )
+
+        player_1_name = str(
+            source_match["player_1"]
+        )
+        player_2_name = str(
+            source_match["player_2"]
+        )
+
+        loser_name: str | None = None
+
+        if winner_name == player_1_name:
+            loser_name = player_2_name
+
+        elif winner_name == player_2_name:
+            loser_name = player_1_name
+
+        outcomes = [
+            ("winner", winner_name),
+            ("loser", loser_name),
+        ]
+
+        for source_outcome, advancing_player in outcomes:
+            if advancing_player is None:
+                continue
+
+            target_match = next(
+                (
+                    later_match
+                    for later_match
+                    in ordered_matches[source_index + 1:]
+                    if advancing_player
+                    in {
+                        str(later_match["player_1"]),
+                        str(later_match["player_2"]),
+                    }
+                ),
+                None,
+            )
+
+            if target_match is None:
+                continue
+
+            target_code = bracket_code_by_match_id.get(
+                str(target_match["match_id"])
+            )
+
+            if target_code is None:
+                continue
+
+            if advancing_player == str(
+                target_match["player_1"]
+            ):
+                target_slot = 1
+
+            elif advancing_player == str(
+                target_match["player_2"]
+            ):
+                target_slot = 2
+
+            else:
+                continue
+
+            route_key = (
+                source_code,
+                source_outcome,
+                target_code,
+                target_slot,
+            )
+
+            if route_key in existing_routes:
+                continue
+
+            routes.append(
+                {
+                    "source_code": source_code,
+                    "source_outcome": source_outcome,
+                    "target_code": target_code,
+                    "target_slot": target_slot,
+                }
+            )
+
+            existing_routes.add(route_key)
+
+    return routes
 
 def show_tournaments() -> None:
     st.title("🏆 Tournaments")
@@ -1834,13 +2168,19 @@ def show_tournaments() -> None:
     )
 
     st.header(f"WM {tournament['tournament_number']:02d}")
-    summary_cols = st.columns(4)
-    summary_cols[0].metric("Winner", tournament["winner"] or "Unknown")
-    summary_cols[1].metric("Date", tournament["tournament_date"] or "–")
-    summary_cols[2].metric("Participants", len(participants))
-    summary_cols[3].metric("Matches", len(matches))
-
-    st.info(tournament_recap)
+    summary_cols = st.columns(3)
+    summary_cols[0].metric(
+        "Date",
+        tournament["tournament_date"] or "–",
+    )
+    summary_cols[1].metric(
+        "Participants",
+        len(participants),
+    )
+    summary_cols[2].metric(
+        "Matches",
+        len(matches),
+    )
 
     podium = {row["placement"]: row["player"] for row in participants if row["placement"] in (1, 2, 3)}
     if podium:
@@ -1849,8 +2189,20 @@ def show_tournaments() -> None:
         podium_cols[1].metric("🥈 2nd Place", podium.get(2, "–"))
         podium_cols[2].metric("🥉 3rd Place", podium.get(3, "–"))
 
-    tab_overview, tab_matches, tab_elo, tab_archive = st.tabs(
-        ["Participants & Results", "All Matches", "Elo After Tournament", "Tournament Archive"]
+    st.info(tournament_recap)
+
+    (
+        tab_overview,
+        tab_bracket,
+        tab_matches,
+        tab_elo,
+    ) = st.tabs(
+        [
+            "Participants & Results",
+            "Bracket",
+            "All Matches",
+            "Elo After Tournament",
+        ]
     )
 
     with tab_overview:
@@ -1873,6 +2225,42 @@ def show_tournaments() -> None:
             },
         )
 
+    with tab_bracket:
+        archived_bracket_matches = (
+            build_archived_bracket_matches(
+                matches
+            )
+        )
+
+        archived_bracket_routes = (
+            build_archived_bracket_routes(
+                matches,
+                archived_bracket_matches,
+            )
+        )
+
+        if archived_bracket_matches:
+            bracket_visualization.render_bracket(
+                archived_bracket_matches,
+                archived_bracket_routes,
+                selected_match_code=None,
+                component_key=(
+                    f"archive_bracket_"
+                    f"{selected_tournament_number}"
+                ),
+            )
+
+            st.caption(
+                "Archived bracket reconstructed from "
+                "Challonge round and match data."
+            )
+
+        else:
+            st.info(
+                "No knockout bracket data is available "
+                "for this tournament."
+            )
+
     with tab_matches:
         if matches:
             match_rows = []
@@ -1894,7 +2282,7 @@ def show_tournaments() -> None:
             st.dataframe(pd.DataFrame(match_rows), hide_index=True, use_container_width=True)
         else:
             st.info("No match data is stored for this tournament.")
-
+  
     with tab_elo:
         if changes:
             biggest_gain = changes[0]
@@ -2009,26 +2397,62 @@ def show_tournaments() -> None:
         elif not changes:
             st.info("No Elo data is available for this tournament.")
 
-    with tab_archive:
-        tournament_df = pd.DataFrame(tournaments)
-        st.dataframe(tournament_df, hide_index=True, use_container_width=True)
+    st.divider()
+
+    with st.expander(
+        "Tournament Archive",
+        expanded=False,
+    ):
+        tournament_df = pd.DataFrame(
+            tournaments
+        )
+
+        st.dataframe(
+            tournament_df,
+            hide_index=True,
+            use_container_width=True,
+        )
+
         winners = (
             tournament_df["Winner"]
             .value_counts()
             .rename_axis("Players")
             .reset_index(name="Titles")
         )
+
         chart = (
             alt.Chart(winners)
             .mark_bar()
             .encode(
-                x=alt.X("Titles:Q", title="Titles", axis=alt.Axis(tickMinStep=1)),
-                y=alt.Y("Players:N", sort="-x", title=None),
-                tooltip=["Players", "Titles"],
+                x=alt.X(
+                    "Titles:Q",
+                    title="Titles",
+                    axis=alt.Axis(
+                        tickMinStep=1,
+                    ),
+                ),
+                y=alt.Y(
+                    "Players:N",
+                    sort="-x",
+                    title=None,
+                ),
+                tooltip=[
+                    "Players",
+                    "Titles",
+                ],
             )
-            .properties(height=max(240, len(winners) * 38))
+            .properties(
+                height=max(
+                    240,
+                    len(winners) * 38,
+                )
+            )
         )
-        st.altair_chart(chart, use_container_width=True)
+
+        st.altair_chart(
+            chart,
+            use_container_width=True,
+        )
 
 @st.dialog(
     "Edit Bracket Match",
