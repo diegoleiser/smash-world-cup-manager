@@ -16,6 +16,10 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 import tournament_manager as tournament  # noqa: E402
+from tournament import bracket_matches  # noqa: E402
+from tournament import bracket_planning  # noqa: E402
+from tournament import bracket_routes  # noqa: E402
+from tournament import bracket_seeding  # noqa: E402
 
 
 def _plan_digest(participant_count: int, entry_mode: str) -> str:
@@ -143,6 +147,40 @@ class BracketPlanSnapshotTests(unittest.TestCase):
                 "GFR",
                 {route["target_code"] for route in routes},
             )
+
+
+class BracketModuleBoundaryTests(unittest.TestCase):
+    """Keep the compatibility facade wired to the focused modules."""
+
+    def test_tournament_manager_keeps_existing_public_imports(self) -> None:
+        self.assertIs(
+            tournament.get_bracket_size,
+            bracket_seeding.get_bracket_size,
+        )
+        self.assertIs(
+            tournament.build_bracket_plan,
+            bracket_matches.build_bracket_plan,
+        )
+        self.assertIs(
+            tournament.build_bracket_route_plan,
+            bracket_routes.build_bracket_route_plan,
+        )
+
+    def test_compatibility_facade_reexports_focused_implementations(
+        self,
+    ) -> None:
+        self.assertIs(
+            bracket_planning.get_standard_seed_order,
+            bracket_seeding.get_standard_seed_order,
+        )
+        self.assertIs(
+            bracket_planning.build_split_bracket_plan,
+            bracket_matches.build_split_bracket_plan,
+        )
+        self.assertIs(
+            bracket_planning.build_split_bracket_route_plan,
+            bracket_routes.build_split_bracket_route_plan,
+        )
 
 
 if __name__ == "__main__":
