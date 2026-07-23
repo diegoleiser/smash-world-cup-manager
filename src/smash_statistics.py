@@ -10,6 +10,14 @@ from pathlib import Path
 from typing import Any
 
 from db.connection import open_sqlite_connection
+from smash_stats.elo_rules import (
+    ELO_K_FACTOR,
+    ELO_MAX_MARGIN_MULTIPLIER,
+    ELO_START_RATING,
+    calculate_elo_change,
+    calculate_expected_score,
+    calculate_margin_multiplier,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -954,70 +962,6 @@ def print_ranking(
             f"{_format_percent(entry['game_winrate']):>9}"
         )
 
-
-
-ELO_START_RATING = 1000.0
-ELO_K_FACTOR = 32.0
-ELO_MAX_MARGIN_MULTIPLIER = 1.2
-
-
-def calculate_expected_score(
-    rating: float,
-    opponent_rating: float,
-) -> float:
-    """Calculates the classic Elo win probability."""
-
-    return 1.0 / (1.0 + 10.0 ** ((opponent_rating - rating) / 400.0))
-
-
-def calculate_margin_multiplier(
-    winner_score: int | None,
-    loser_score: int | None,
-) -> float:
-    """
-    Determines the small bonus for a decisive match win.
-
-    Beispiele:
-    2:1 or 3:2 -> 1.00
-    2:0 or 3:1 -> 1.10
-    3:0          -> 1.20
-    unknown    -> 1.00
-    """
-
-    if winner_score is None or loser_score is None:
-        return 1.0
-
-    game_difference = winner_score - loser_score
-
-    if game_difference <= 1:
-        return 1.0
-
-    return min(
-        1.0 + 0.1 * (game_difference - 1),
-        ELO_MAX_MARGIN_MULTIPLIER,
-    )
-
-
-def calculate_elo_change(
-    winner_rating: float,
-    loser_rating: float,
-    *,
-    winner_score: int | None = None,
-    loser_score: int | None = None,
-    k_factor: float = ELO_K_FACTOR,
-) -> float:
-    """Calculates the Elo change for the winner and loser."""
-
-    expected_winner = calculate_expected_score(
-        winner_rating,
-        loser_rating,
-    )
-    margin_multiplier = calculate_margin_multiplier(
-        winner_score,
-        loser_score,
-    )
-
-    return k_factor * margin_multiplier * (1.0 - expected_winner)
 
 
 def calculate_elo_history(
