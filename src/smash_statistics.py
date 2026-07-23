@@ -9,6 +9,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from db.connection import open_sqlite_connection
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "smash_wm.db"
@@ -21,16 +23,7 @@ class PlayerNotFoundError(ValueError):
 def connect_db(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Opens the SQLite database with named columns."""
 
-    path = Path(db_path)
-
-    if not path.exists():
-        raise FileNotFoundError(f"Database not found: {path}")
-
-    connection = sqlite3.connect(path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-
-    return connection
+    return open_sqlite_connection(db_path)
 
 
 def resolve_player(

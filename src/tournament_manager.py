@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 import smash_statistics as stats
+from db.connection import open_sqlite_connection
 from tournament.bracket_planning import (
     BRACKET_SIDE_FINALS,
     BRACKET_SIDE_LOSERS,
@@ -3308,16 +3309,7 @@ def update_draft_bracket_match(
 def connect_db(db_path: str | Path) -> sqlite3.Connection:
     """Opens the SQLite database with foreign keys enabled."""
 
-    path = Path(db_path)
-
-    if not path.exists():
-        raise FileNotFoundError(f"Database not found: {path}")
-
-    connection = sqlite3.connect(path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-
-    return connection
+    return open_sqlite_connection(db_path)
 
 def _draft_has_group_matches(
     connection: sqlite3.Connection,
