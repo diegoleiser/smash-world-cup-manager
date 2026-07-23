@@ -339,4 +339,41 @@ def get_player_elo_history(
             )
 
     return player_history
+def get_player_elo_summary(
+    player_reference: str,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    *,
+    start_rating: float = ELO_START_RATING,
+    k_factor: float = ELO_K_FACTOR,
+) -> dict[str, Any]:
+    """Returns a player’s current Elo and all-time peak Elo."""
+
+    history = get_player_elo_history(
+        player_reference,
+        db_path,
+        start_rating=start_rating,
+        k_factor=k_factor,
+    )
+
+    if not history:
+        return {
+            "current_elo": None,
+            "peak_elo": None,
+            "peak_elo_tournament": None,
+            "peak_elo_match_id": None,
+            "rated_matches": 0,
+        }
+
+    peak_event = max(
+        history,
+        key=lambda event: float(event["elo_after"]),
+    )
+
+    return {
+        "current_elo": round(float(history[-1]["elo_after"]), 1),
+        "peak_elo": round(float(peak_event["elo_after"]), 1),
+        "peak_elo_tournament": peak_event["tournament_number"],
+        "peak_elo_match_id": peak_event["match_id"],
+        "rated_matches": len(history),
+    }
 

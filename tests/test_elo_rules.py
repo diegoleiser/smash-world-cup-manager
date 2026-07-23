@@ -17,6 +17,7 @@ import smash_statistics as statistics  # noqa: E402
 from smash_stats import database  # noqa: E402
 from smash_stats import elo_history  # noqa: E402
 from smash_stats import elo_rules  # noqa: E402
+from smash_stats import player_stats  # noqa: E402
 
 
 class EloRuleModuleBoundaryTests(unittest.TestCase):
@@ -65,6 +66,24 @@ class EloRuleModuleBoundaryTests(unittest.TestCase):
         self.assertIs(
             statistics.get_player_elo_history,
             elo_history.get_player_elo_history,
+        )
+        self.assertIs(
+            statistics.get_player_elo_summary,
+            elo_history.get_player_elo_summary,
+        )
+
+    def test_player_functions_are_reexported_unchanged(self) -> None:
+        self.assertIs(
+            statistics.get_player_stats,
+            player_stats.get_player_stats,
+        )
+        self.assertIs(
+            statistics.get_all_player_stats,
+            player_stats.get_all_player_stats,
+        )
+        self.assertIs(
+            statistics.get_player_history,
+            player_stats.get_player_history,
         )
 
 
