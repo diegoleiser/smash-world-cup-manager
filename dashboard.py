@@ -7478,6 +7478,34 @@ def show_tournament_manager() -> None:
             use_container_width=True,
         )
 
+        remove_player_by_name = {
+            str(participant["player"]): str(participant["player_id"])
+            for participant in draft["participants"]
+        }
+
+        remove_name = st.selectbox(
+            "Remove participant",
+            options=list(remove_player_by_name),
+            disabled=setup_locked,
+        )
+
+        if st.button(
+            "Remove Selected Participant",
+            type="secondary",
+            disabled=setup_locked,
+        ):
+            try:
+                tournament_manager.remove_participant(
+                    DB_PATH,
+                    selected_draft_id,
+                    remove_player_by_name[remove_name],
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.cache_data.clear()
+                st.rerun()
+
         st.subheader("Initial Seeding")
 
         st.caption(
@@ -8411,33 +8439,6 @@ def show_tournament_manager() -> None:
                     "to create a group."
                 )
 
-        remove_player_by_name = {
-            str(participant["player"]): str(participant["player_id"])
-            for participant in draft["participants"]
-        }
-
-        remove_name = st.selectbox(
-            "Remove participant",
-            options=list(remove_player_by_name),
-            disabled=setup_locked,
-        )
-
-        if st.button(
-            "Remove Selected Participant",
-            type="secondary",
-            disabled=setup_locked,
-        ):
-            try:
-                tournament_manager.remove_participant(
-                    DB_PATH,
-                    selected_draft_id,
-                    remove_player_by_name[remove_name],
-                )
-            except ValueError as exc:
-                st.error(str(exc))
-            else:
-                st.cache_data.clear()
-                st.rerun()
     else:
         st.info("No participants have been added yet.")
 
@@ -8457,18 +8458,25 @@ def show_tournament_manager() -> None:
         draft["format_type"]
         == tournament_manager.FORMAT_GROUP_STAGE
     ):
-        global_ranking = (
-            load_tournament_draft_global_group_ranking(
-                selected_draft_id,
-            )
-        )
-
-        if not global_ranking["complete"]:
+        if not draft_groups:
             bracket_can_be_generated = False
             st.info(
-                "Complete all group matches before generating "
+                "Create the tournament groups before generating "
                 "the bracket."
             )
+        else:
+            global_ranking = (
+                load_tournament_draft_global_group_ranking(
+                    selected_draft_id,
+                )
+            )
+
+            if not global_ranking["complete"]:
+                bracket_can_be_generated = False
+                st.info(
+                    "Complete all group matches before generating "
+                    "the bracket."
+                )
 
     if not bracket_generated:
         if st.button(

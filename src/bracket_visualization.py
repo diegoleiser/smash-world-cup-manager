@@ -957,7 +957,15 @@ def _render_match_card(
 def _group_matches_by_round(
     matches: list[dict[str, Any]],
 ) -> list[tuple[int, str, list[dict[str, Any]]]]:
-    """Group and sort matches by round."""
+    """
+    Group and sort visible matches by round.
+
+    Bye matches remain part of the persisted bracket because their automatic
+    winners must still propagate through the route graph. They are an
+    implementation detail, however, and are intentionally omitted from the
+    visual bracket together with inactive conditional matches and cancelled
+    placeholders that never received either player.
+    """
 
     rounds: dict[
         tuple[int, str],
@@ -969,7 +977,27 @@ def _group_matches_by_round(
             match.get("status") or ""
         )
 
-        if status == "inactive":
+        has_player_id = any(
+            match.get(key) not in {None, ""}
+            for key in (
+                "player_1_id",
+                "player_2_id",
+            )
+        )
+        has_player_name = any(
+            match.get(key) is not None
+            and str(match.get(key)).strip().casefold() not in {"", "tbd"}
+            for key in (
+                "player_1_name",
+                "player_2_name",
+            )
+        )
+        has_player = has_player_id or has_player_name
+
+        if (
+            status in {"bye", "inactive"}
+            or (status == "cancelled" and not has_player)
+        ):
             continue
 
         round_number = int(
