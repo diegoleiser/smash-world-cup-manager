@@ -14,6 +14,8 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 import smash_statistics as statistics  # noqa: E402
+from smash_stats import database  # noqa: E402
+from smash_stats import elo_history  # noqa: E402
 from smash_stats import elo_rules  # noqa: E402
 
 
@@ -38,6 +40,32 @@ class EloRuleModuleBoundaryTests(unittest.TestCase):
         self.assertEqual(statistics.ELO_START_RATING, 1000.0)
         self.assertEqual(statistics.ELO_K_FACTOR, 32.0)
         self.assertEqual(statistics.ELO_MAX_MARGIN_MULTIPLIER, 1.2)
+
+    def test_database_helpers_are_reexported_unchanged(self) -> None:
+        self.assertIs(statistics.connect_db, database.connect_db)
+        self.assertIs(statistics.resolve_player, database.resolve_player)
+        self.assertIs(
+            statistics.PlayerNotFoundError,
+            database.PlayerNotFoundError,
+        )
+        self.assertEqual(
+            statistics.DEFAULT_DB_PATH,
+            database.DEFAULT_DB_PATH,
+        )
+
+    def test_history_functions_are_reexported_unchanged(self) -> None:
+        self.assertIs(
+            statistics.calculate_elo_history,
+            elo_history.calculate_elo_history,
+        )
+        self.assertIs(
+            statistics.get_elo_ranking,
+            elo_history.get_elo_ranking,
+        )
+        self.assertIs(
+            statistics.get_player_elo_history,
+            elo_history.get_player_elo_history,
+        )
 
 
 class EloRuleTests(unittest.TestCase):
