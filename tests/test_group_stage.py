@@ -455,6 +455,71 @@ class GroupStandingsTests(GroupStageDatabaseTestCase):
 class GlobalGroupRankingTests(GroupStageDatabaseTestCase):
     """Preserve cross-group ordering and bracket-entry assignment."""
 
+    def test_equal_placements_are_reseeded_to_avoid_group_rematches(
+        self,
+    ) -> None:
+        def ranked_player(
+            player_id: str,
+            placement: int,
+            set_win_percentage: float,
+        ) -> dict[str, object]:
+            return {
+                "player_id": player_id,
+                "player": player_id.title(),
+                "placement": placement,
+                "set_win_percentage": set_win_percentage,
+                "game_win_percentage": set_win_percentage,
+                "games_won": int(set_win_percentage),
+                "initial_elo": 1000.0,
+                "initial_seed": 1,
+            }
+
+        ranking = group_stage_ranking.build_global_group_ranking(
+            [
+                {
+                    "group_id": "group-a",
+                    "group_name": "Group A",
+                    "pending_matches": 0,
+                    "cancelled_matches": 0,
+                    "total_matches": 3,
+                    "decided_matches": 3,
+                    "standings": [
+                        ranked_player("diego", 1, 50.0),
+                        ranked_player("beniam", 2, 50.0),
+                        ranked_player("frutos", 3, 50.0),
+                    ],
+                },
+                {
+                    "group_id": "group-b",
+                    "group_name": "Group B",
+                    "pending_matches": 0,
+                    "cancelled_matches": 0,
+                    "total_matches": 1,
+                    "decided_matches": 1,
+                    "standings": [
+                        ranked_player("adem", 1, 100.0),
+                        ranked_player("ammar", 2, 0.0),
+                    ],
+                },
+            ],
+            tournament.ENTRY_SPLIT_BY_GROUP_SEED,
+        )
+
+        self.assertEqual(
+            [
+                player["player_id"]
+                for player in ranking["ranking"]
+            ],
+            ["adem", "diego", "ammar", "beniam", "frutos"],
+        )
+        self.assertEqual(
+            [
+                player["group_placement"]
+                for player in ranking["ranking"]
+            ],
+            [1, 1, 2, 2, 3],
+        )
+
     def test_group_placement_precedes_cross_group_percentages(self) -> None:
         self.add_group("group-1", 1, ["a", "b"])
         self.add_group("group-2", 2, ["c", "d"])
