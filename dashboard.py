@@ -45,6 +45,13 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    :root {
+        --mobile-table-columns: 4.5rem minmax(7rem, 1fr) minmax(6rem, 0.8fr);
+        --mobile-table-gap: 0.75rem;
+        --mobile-table-padding: 0.7rem 1rem;
+        --mobile-table-height: 4.2rem;
+    }
+
     [data-testid="stMetricDelta"] svg {
         display: none;
     }
@@ -807,7 +814,7 @@ def show_home(include_inactive: bool) -> None:
     st.subheader("📊 Archive Summary")
 
     archive_summary_html = (
-        "<div style='"
+        "<div class='archive-summary-grid' style='"
         "display:grid;"
         "grid-template-columns:repeat(4, 1fr);"
         "align-items:stretch;"
@@ -816,7 +823,7 @@ def show_home(include_inactive: bool) -> None:
         "overflow:hidden;"
         "'>"
 
-        "<div style='"
+        "<div class='archive-summary-card' style='"
         "display:flex;"
         "flex-direction:column;"
         "align-items:center;"
@@ -863,7 +870,7 @@ def show_home(include_inactive: bool) -> None:
         "</div>"
         "</div>"
 
-        "<div style='"
+        "<div class='archive-summary-card' style='"
         "display:flex;"
         "flex-direction:column;"
         "align-items:center;"
@@ -911,7 +918,7 @@ def show_home(include_inactive: bool) -> None:
         "</div>"
         "</div>"
 
-        "<div style='"
+        "<div class='archive-summary-card' style='"
         "display:flex;"
         "flex-direction:column;"
         "align-items:center;"
@@ -959,7 +966,7 @@ def show_home(include_inactive: bool) -> None:
         "</div>"
         "</div>"
 
-        "<div style='"
+        "<div class='archive-summary-card' style='"
         "display:flex;"
         "flex-direction:column;"
         "align-items:center;"
@@ -1008,6 +1015,32 @@ def show_home(include_inactive: bool) -> None:
         "</div>"
 
         "</div>"
+    )
+
+    st.markdown(
+        """
+        <style>
+        @media (max-width: 768px) {
+            .archive-summary-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            }
+
+            .archive-summary-card {
+                min-width: 0;
+            }
+
+            .archive-summary-card:nth-child(3) {
+                border-left: none !important;
+                border-top: 1px solid rgba(128,128,128,0.22);
+            }
+
+            .archive-summary-card:nth-child(4) {
+                border-top: 1px solid rgba(128,128,128,0.22);
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
     st.markdown(
@@ -1068,13 +1101,13 @@ def show_home(include_inactive: bool) -> None:
     )
 
     current_overview_html = (
-        "<div style='"
+       "<div class='current-overview-grid' style='"
         "display:grid;"
         "grid-template-columns:repeat(3, minmax(0, 1fr));"
         "gap:1rem;"
         "'>"
 
-        "<div style='"
+        "<div class='current-overview-card' style='"
         "display:flex;"
         "flex-direction:column;"
         "min-height:10rem;"
@@ -1108,7 +1141,7 @@ def show_home(include_inactive: bool) -> None:
         "</div>"
         "</div>"
 
-        "<div style='"
+        "<div class='current-overview-card' style='"
         "display:flex;"
         "flex-direction:column;"
         "min-height:10rem;"
@@ -1142,7 +1175,7 @@ def show_home(include_inactive: bool) -> None:
         "</div>"
         "</div>"
 
-        "<div style='"
+        "<div class='current-overview-card' style='"
         "display:flex;"
         "flex-direction:column;"
         "min-height:10rem;"
@@ -1177,6 +1210,28 @@ def show_home(include_inactive: bool) -> None:
         "</div>"
 
         "</div>"
+    )
+
+    st.markdown(
+        """
+        <style>
+        @media (max-width: 768px) {
+            .current-overview-grid {
+                grid-template-columns: 1fr !important;
+            }
+
+            .current-overview-card {
+                min-width: 0;
+            }
+
+            .current-overview-card > div {
+                overflow-wrap: normal;
+                word-break: normal;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
     st.markdown(
@@ -1600,10 +1655,18 @@ def show_home(include_inactive: bool) -> None:
         "text-align:center;"
         "}"
 
-        "@media (max-width:800px) {"
+        "@media (max-width:768px) {"
+
         ".elo-ranking-row {"
-        "grid-template-columns:4.5rem minmax(7rem,1fr) "
-        "minmax(6rem,0.8fr);"
+        "grid-template-columns:var(--mobile-table-columns);"
+        "gap:var(--mobile-table-gap);"
+        "padding:var(--mobile-table-padding);"
+        "min-height:var(--mobile-table-height);"
+        "}"
+
+        ".elo-ranking-rank {"
+        "padding-right:1.9rem;"
+        "white-space:nowrap;"
         "}"
 
         ".elo-ranking-gap,"
@@ -1611,6 +1674,7 @@ def show_home(include_inactive: bool) -> None:
         ".elo-ranking-status {"
         "display:none;"
         "}"
+
         "}"
         "</style>"
 
@@ -2038,7 +2102,10 @@ def show_home(include_inactive: bool) -> None:
         tournament_df = pd.DataFrame(
             [
                 {
-                    "Tournament": tournament["WM"],
+                    "Tournament": (
+                        f"World Championship "
+                        f"{int(tournament['WM'].split()[1]):02d}"
+                    ),
                     "Date": tournament["Date"],
                     "Champion": tournament["Winner"],
                     "Players": (
@@ -2103,6 +2170,7 @@ def show_home(include_inactive: bool) -> None:
             "<style>"
 
             ".tournament-overview-list {"
+            "width:100%;"
             "border:1px solid rgba(128,128,128,0.30);"
             "border-radius:0.8rem;"
             "overflow:hidden;"
@@ -2111,10 +2179,42 @@ def show_home(include_inactive: bool) -> None:
             ".tournament-overview-header,"
             ".tournament-overview-row {"
             "display:grid;"
-            "grid-template-columns:7rem 10rem minmax(10rem,1fr) 6rem;"
+            "grid-template-columns:minmax(15rem,1.4fr) "
+            "minmax(10rem,0.9fr) "
+            "minmax(12rem,1.2fr) "
+            "minmax(5rem,0.45fr);"
             "align-items:center;"
-            "gap:1rem;"
-            "padding:0.8rem 1rem;"
+            "gap:0.75rem;"
+            "padding:0.7rem 1rem;"
+            "}"
+
+            ".tournament-overview-header {"
+            "min-height:3.2rem;"
+            "background:rgba(128,128,128,0.08);"
+            "border-bottom:1px solid rgba(128,128,128,0.24);"
+            "font-size:0.78rem;"
+            "font-weight:750;"
+            "letter-spacing:0.04em;"
+            "opacity:0.68;"
+            "text-transform:uppercase;"
+            "}"
+
+            ".tournament-overview-row {"
+            "min-height:4.2rem;"
+            "border-bottom:1px solid rgba(128,128,128,0.20);"
+            "}"
+            "border:1px solid rgba(128,128,128,0.30);"
+            "border-radius:0.8rem;"
+            "overflow:hidden;"
+            "}"
+
+            ".tournament-overview-header,"
+            ".tournament-overview-row {"
+            "display:grid;"
+            "grid-template-columns:7rem 10rem minmax(12rem,18rem) 5rem;"
+            "align-items:center;"
+            "gap:1.25rem;"
+            "padding:0.75rem 1rem;"
             "}"
 
             ".tournament-overview-header {"
@@ -2129,7 +2229,7 @@ def show_home(include_inactive: bool) -> None:
             "}"
 
             ".tournament-overview-row {"
-            "min-height:3.8rem;"
+            "min-height:3.6rem;"
             "border-bottom:1px solid rgba(128,128,128,0.20);"
             "}"
 
@@ -2138,17 +2238,18 @@ def show_home(include_inactive: bool) -> None:
             "}"
 
             ".tournament-overview-name {"
+            "font-size:1.1rem;"
             "font-weight:800;"
             "}"
 
             ".tournament-overview-date {"
-            "font-size:0.92rem;"
-            "font-weight:650;"
-            "opacity:0.72;"
+            "font-size:0.88rem;"
+            "font-weight:700;"
+            "opacity:0.68;"
             "}"
 
             ".tournament-overview-champion {"
-            "font-size:1.02rem;"
+            "font-size:1.1rem;"
             "font-weight:800;"
             "}"
 
@@ -2156,16 +2257,49 @@ def show_home(include_inactive: bool) -> None:
             "font-weight:750;"
             "text-align:right;"
             "}"
+            ".tournament-overview-header-players {"
+            "text-align:right;"
+            "}"
 
-            "@media (max-width:800px) {"
+            "@media (max-width:768px) {"
 
             ".tournament-overview-header,"
             ".tournament-overview-row {"
-            "grid-template-columns:5rem minmax(8rem,1fr) 4rem;"
+            "grid-template-columns:var(--mobile-table-columns);"
+            "gap:var(--mobile-table-gap);"
+            "padding:var(--mobile-table-padding);"
+            "min-height:var(--mobile-table-height);"
             "}"
 
-            ".tournament-overview-date {"
+            ".tournament-overview-date,"
+            ".tournament-overview-header-date {"
             "display:none;"
+            "}"
+
+            ".tournament-overview-header-name {"
+            "white-space:nowrap;"
+            "}"
+
+            ".tournament-overview-name {"
+            "font-size:0.95rem;"
+            "}"
+
+            ".tournament-overview-champion,"
+            ".tournament-overview-header-champion {"
+            "text-align:center;"
+            "}"
+
+            ".tournament-overview-champion {"
+            "font-size:0.98rem;"
+            "min-width:0;"
+            "overflow:hidden;"
+            "text-overflow:ellipsis;"
+            "white-space:nowrap;"
+            "}"
+
+            ".tournament-overview-players,"
+            ".tournament-overview-header-players {"
+            "text-align:right;"
             "}"
 
             "}"
@@ -2175,10 +2309,18 @@ def show_home(include_inactive: bool) -> None:
             "<div class='tournament-overview-list'>"
 
             "<div class='tournament-overview-header'>"
-            "<div>Tournament</div>"
-            "<div>Date</div>"
-            "<div>Champion</div>"
-            "<div style='text-align:right;'>Players</div>"
+            "<div class='tournament-overview-header-name'>"
+            "Tournament"
+            "</div>"
+            "<div class='tournament-overview-header-date'>"
+            "Date"
+            "</div>"
+            "<div class='tournament-overview-header-champion'>"
+            "Champion"
+            "</div>"
+            "<div class='tournament-overview-header-players'>"
+            "Players"
+            "</div>"
             "</div>"
 
             f"{''.join(tournament_rows_html)}"
@@ -2262,36 +2404,61 @@ def show_home(include_inactive: bool) -> None:
 
         title_leaders_html = (
             "<style>"
+
             ".title-leader-list {"
             "border:1px solid rgba(128,128,128,0.30);"
             "border-radius:0.8rem;"
             "overflow:hidden;"
             "}"
+
             ".title-leader-row {"
             "display:grid;"
-            "grid-template-columns:5.5rem minmax(10rem,1fr) 8rem;"
+            "grid-template-columns:5.5rem minmax(8rem,2fr) "
+            "minmax(7rem,1fr);"
             "align-items:center;"
-            "min-height:4rem;"
+            "min-height:4.2rem;"
             "padding:0.7rem 1rem;"
             "border-bottom:1px solid rgba(128,128,128,0.20);"
-            "gap:1rem;"
+            "gap:0.75rem;"
             "}"
+
             ".title-leader-row:last-child {"
             "border-bottom:none;"
             "}"
+
             ".title-leader-rank {"
             "font-weight:800;"
             "text-align:right;"
             "}"
+
             ".title-leader-player {"
-            "font-size:1.08rem;"
+            "font-size:1.1rem;"
             "font-weight:800;"
             "}"
+
             ".title-leader-count {"
             "font-weight:750;"
             "text-align:right;"
             "}"
+
+            "@media (max-width:768px) {"
+
+            ".title-leader-row {"
+            "grid-template-columns:var(--mobile-table-columns);"
+            "gap:var(--mobile-table-gap);"
+            "padding:var(--mobile-table-padding);"
+            "min-height:var(--mobile-table-height);"
+            "}"
+
+            ".title-leader-rank {"
+            "padding-right:1.9rem;"
+            "white-space:nowrap;"
+            "}"
+
+            "}"
+
             "</style>"
+
             "<div class='title-leader-list'>"
             f"{''.join(title_rows_html)}"
             "</div>"
