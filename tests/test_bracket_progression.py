@@ -45,7 +45,7 @@ class CancelledBracketPropagationTests(unittest.TestCase):
             ):
                 connection.executescript(sql_path.read_text())
 
-            for player_id in ("a", "b", "c"):
+            for player_id in ("a", "b", "c", "d"):
                 connection.execute(
                     """
                     INSERT INTO players (
@@ -73,6 +73,24 @@ class CancelledBracketPropagationTests(unittest.TestCase):
                 )
                 """
             )
+
+            for player_id, seed in (
+                ("c", 1),
+                ("a", 2),
+                ("b", 3),
+                ("d", 4),
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO tournament_draft_participants (
+                        draft_id,
+                        player_id,
+                        bracket_seed
+                    )
+                    VALUES ('draft', ?, ?)
+                    """,
+                    (player_id, seed),
+                )
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -120,9 +138,9 @@ class CancelledBracketPropagationTests(unittest.TestCase):
                     "WF",
                     1,
                     3,
-                    "a",
+                    "d",
                     None,
-                    "a",
+                    "d",
                     "bye",
                 ),
                 (
@@ -228,7 +246,7 @@ class CancelledBracketPropagationTests(unittest.TestCase):
 
         return target
 
-    def test_real_cancelled_match_creates_visible_single_bye(
+    def test_real_cancelled_match_uses_seeds_for_placements(
         self,
     ) -> None:
         self.create_source_and_target_matches(
@@ -243,7 +261,10 @@ class CancelledBracketPropagationTests(unittest.TestCase):
 
         target = self.load_target()
 
-        self.assertEqual(target["status"], "bye")
+        # A is better seeded than B and occupies the next placement
+        # position. C qualified normally, so C advances automatically.
+        self.assertEqual(target["status"], "forfeit")
+        self.assertEqual(target["player_1_id"], "a")
         self.assertEqual(target["player_2_id"], "c")
         self.assertEqual(target["winner_id"], "c")
 
@@ -264,7 +285,7 @@ class CancelledBracketPropagationTests(unittest.TestCase):
             self.fail("Final target match was not created.")
 
         self.assertEqual(final_target["player_1_id"], "c")
-        self.assertEqual(final_target["player_2_id"], "a")
+        self.assertEqual(final_target["player_2_id"], "d")
         self.assertEqual(final_target["status"], "pending")
         self.assertIsNone(final_target["winner_id"])
 

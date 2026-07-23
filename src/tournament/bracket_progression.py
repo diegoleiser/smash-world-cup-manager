@@ -60,6 +60,40 @@ def _get_routed_bracket_player_id(
     )
 
 
+def _get_cancelled_losers_advancer_id(
+    *,
+    source_outcome: str,
+    bracket_side: str,
+    player_1_id: Any,
+    player_2_id: Any,
+    player_1_seed: Any,
+    player_2_seed: Any,
+) -> str | None:
+    """
+    Return the better-seeded player for placement propagation.
+
+    A real cancelled Losers match eliminates both players. The worse-seeded
+    player is placed in the cancelled round, while the better-seeded player
+    occupies the next round's placement and loses there automatically.
+    """
+
+    if (
+        source_outcome != "winner"
+        or bracket_side != "losers"
+        or player_1_id is None
+        or player_2_id is None
+        or player_1_seed is None
+        or player_2_seed is None
+    ):
+        return None
+
+    return str(
+        player_1_id
+        if int(player_1_seed) < int(player_2_seed)
+        else player_2_id
+    )
+
+
 def propagate_draft_bracket_results(
     db_path: str | Path,
     draft_id: str,
@@ -109,6 +143,12 @@ def propagate_draft_bracket_results(
                         AS source_winner_id,
                     source.status
                         AS source_status,
+                    source.bracket_side
+                        AS source_bracket_side,
+                    source_player_1.bracket_seed
+                        AS source_player_1_seed,
+                    source_player_2.bracket_seed
+                        AS source_player_2_seed,
 
                     target.bracket_match_id
                         AS target_match_id,
@@ -127,6 +167,16 @@ def propagate_draft_bracket_results(
                   ON source.bracket_match_id = r.source_match_id
                 JOIN tournament_draft_bracket_matches AS target
                   ON target.bracket_match_id = r.target_match_id
+                LEFT JOIN tournament_draft_participants
+                    AS source_player_1
+                  ON source_player_1.draft_id = r.draft_id
+                 AND source_player_1.player_id =
+                     source.player_1_id
+                LEFT JOIN tournament_draft_participants
+                    AS source_player_2
+                  ON source_player_2.draft_id = r.draft_id
+                 AND source_player_2.player_id =
+                     source.player_2_id
                 WHERE r.draft_id = ?
                 ORDER BY
                     target.round_number,
@@ -162,6 +212,33 @@ def propagate_draft_bracket_results(
                         ],
                     )
                 )
+
+                if (
+                    routed_player_id is None
+                    and source_status == "cancelled"
+                ):
+                    routed_player_id = (
+                        _get_cancelled_losers_advancer_id(
+                            source_outcome=str(
+                                route["source_outcome"]
+                            ),
+                            bracket_side=str(
+                                route["source_bracket_side"]
+                            ),
+                            player_1_id=route[
+                                "source_player_1_id"
+                            ],
+                            player_2_id=route[
+                                "source_player_2_id"
+                            ],
+                            player_1_seed=route[
+                                "source_player_1_seed"
+                            ],
+                            player_2_seed=route[
+                                "source_player_2_seed"
+                            ],
+                        )
+                    )
 
                 target_slot_column = (
                     "player_1_id"
@@ -265,12 +342,27 @@ def propagate_draft_bracket_results(
                         source.player_1_id,
                         source.player_2_id,
                         source.winner_id,
+                        source.bracket_side,
+                        source_player_1.bracket_seed
+                            AS player_1_seed,
+                        source_player_2.bracket_seed
+                            AS player_2_seed,
                         r.source_outcome,
                         r.target_slot
                     FROM tournament_draft_bracket_routes AS r
                     JOIN tournament_draft_bracket_matches AS source
                       ON source.bracket_match_id =
                          r.source_match_id
+                    LEFT JOIN tournament_draft_participants
+                        AS source_player_1
+                      ON source_player_1.draft_id = r.draft_id
+                     AND source_player_1.player_id =
+                         source.player_1_id
+                    LEFT JOIN tournament_draft_participants
+                        AS source_player_2
+                      ON source_player_2.draft_id = r.draft_id
+                     AND source_player_2.player_id =
+                         source.player_2_id
                     WHERE r.target_match_id = ?
                     """,
                     (target["bracket_match_id"],),
@@ -300,13 +392,40 @@ def propagate_draft_bracket_results(
                 # slot in the meantime.
                 all_routed_players_applied = all(
                     (
-                        _get_routed_bracket_player_id(
-                            source_outcome=str(
-                                source["source_outcome"]
-                            ),
-                            player_1_id=source["player_1_id"],
-                            player_2_id=source["player_2_id"],
-                            winner_id=source["winner_id"],
+                        (
+                            _get_routed_bracket_player_id(
+                                source_outcome=str(
+                                    source["source_outcome"]
+                                ),
+                                player_1_id=source["player_1_id"],
+                                player_2_id=source["player_2_id"],
+                                winner_id=source["winner_id"],
+                            )
+                            or (
+                                _get_cancelled_losers_advancer_id(
+                                    source_outcome=str(
+                                        source["source_outcome"]
+                                    ),
+                                    bracket_side=str(
+                                        source["bracket_side"]
+                                    ),
+                                    player_1_id=source[
+                                        "player_1_id"
+                                    ],
+                                    player_2_id=source[
+                                        "player_2_id"
+                                    ],
+                                    player_1_seed=source[
+                                        "player_1_seed"
+                                    ],
+                                    player_2_seed=source[
+                                        "player_2_seed"
+                                    ],
+                                )
+                                if str(source["status"])
+                                == "cancelled"
+                                else None
+                            )
                         )
                         is None
                     )
@@ -325,9 +444,47 @@ def propagate_draft_bracket_results(
                     player_1_id is not None
                     and player_2_id is not None
                 ):
-                    new_status = "pending"
-                    winner_id = None
-                    completed_at_sql = "NULL"
+                    cancelled_advancer_slots = [
+                        int(source["target_slot"])
+                        for source in incoming_sources
+                        if (
+                            str(source["status"]) == "cancelled"
+                            and _get_cancelled_losers_advancer_id(
+                                source_outcome=str(
+                                    source["source_outcome"]
+                                ),
+                                bracket_side=str(
+                                    source["bracket_side"]
+                                ),
+                                player_1_id=source[
+                                    "player_1_id"
+                                ],
+                                player_2_id=source[
+                                    "player_2_id"
+                                ],
+                                player_1_seed=source[
+                                    "player_1_seed"
+                                ],
+                                player_2_seed=source[
+                                    "player_2_seed"
+                                ],
+                            )
+                            is not None
+                        )
+                    ]
+
+                    if len(cancelled_advancer_slots) == 1:
+                        new_status = "forfeit"
+                        winner_id = (
+                            player_2_id
+                            if cancelled_advancer_slots[0] == 1
+                            else player_1_id
+                        )
+                        completed_at_sql = "CURRENT_TIMESTAMP"
+                    else:
+                        new_status = "pending"
+                        winner_id = None
+                        completed_at_sql = "NULL"
 
                 elif player_1_id is not None:
                     new_status = "bye"
