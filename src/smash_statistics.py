@@ -2124,6 +2124,7 @@ def get_player_elo_timeline(
     player_reference: str,
     db_path: str | Path = DEFAULT_DB_PATH,
     *,
+    active_only: bool = False,
     start_rating: float = ELO_START_RATING,
     k_factor: float = ELO_K_FACTOR,
 ) -> list[dict[str, Any]]:
@@ -2139,7 +2140,7 @@ def get_player_elo_timeline(
 
     timeline = get_elo_ranking_timeline(
         db_path,
-        active_only=False,
+        active_only=active_only,
         start_rating=start_rating,
         k_factor=k_factor,
     )
