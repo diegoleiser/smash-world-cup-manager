@@ -2401,6 +2401,56 @@ def create_draft_split_bracket_routes(
 
     return created_routes
 
+def _is_resolved_bracket_source(
+    status: str,
+    player_1_id: Any,
+    player_2_id: Any,
+) -> bool:
+    """
+    Return whether a source can no longer produce an undecided outcome.
+
+    A Cancelled match is resolved without producing a player. If the other
+    incoming route does produce a player, the target becomes an automatic Bye.
+    """
+
+    return status in {
+        "completed",
+        "forfeit",
+        "bye",
+        "cancelled",
+    }
+
+
+def _get_routed_bracket_player_id(
+    *,
+    source_outcome: str,
+    player_1_id: Any,
+    player_2_id: Any,
+    winner_id: Any,
+) -> str | None:
+    """Return the player supplied by one resolved Bracket route."""
+
+    if source_outcome == "winner":
+        return (
+            str(winner_id)
+            if winner_id is not None
+            else None
+        )
+
+    if (
+        player_1_id is None
+        or player_2_id is None
+        or winner_id is None
+    ):
+        return None
+
+    return str(
+        player_2_id
+        if winner_id == player_1_id
+        else player_1_id
+    )
+
+
 def propagate_draft_bracket_results(
     db_path: str | Path,
     draft_id: str,
@@ -2419,7 +2469,7 @@ def propagate_draft_bracket_results(
     Grand Final Reset is handled separately.
     """
 
-    terminal_statuses = {
+    terminal_target_statuses = {
         "completed",
         "forfeit",
         "bye",
@@ -2480,32 +2530,29 @@ def propagate_draft_bracket_results(
             for route in routes:
                 source_status = str(route["source_status"])
 
-                if source_status not in terminal_statuses:
+                if not _is_resolved_bracket_source(
+                    source_status,
+                    route["source_player_1_id"],
+                    route["source_player_2_id"],
+                ):
                     continue
 
-                routed_player_id: str | None = None
-
-                if route["source_outcome"] == "winner":
-                    if route["source_winner_id"] is not None:
-                        routed_player_id = str(
-                            route["source_winner_id"]
-                        )
-
-                else:
-                    player_1_id = route["source_player_1_id"]
-                    player_2_id = route["source_player_2_id"]
-                    winner_id = route["source_winner_id"]
-
-                    if (
-                        player_1_id is not None
-                        and player_2_id is not None
-                        and winner_id is not None
-                    ):
-                        routed_player_id = str(
-                            player_2_id
-                            if winner_id == player_1_id
-                            else player_1_id
-                        )
+                routed_player_id = (
+                    _get_routed_bracket_player_id(
+                        source_outcome=str(
+                            route["source_outcome"]
+                        ),
+                        player_1_id=route[
+                            "source_player_1_id"
+                        ],
+                        player_2_id=route[
+                            "source_player_2_id"
+                        ],
+                        winner_id=route[
+                            "source_winner_id"
+                        ],
+                    )
+                )
 
                 target_slot_column = (
                     "player_1_id"
@@ -2599,12 +2646,18 @@ def propagate_draft_bracket_results(
                     target["status"]
                 )
 
-                if current_target_status in terminal_statuses:
+                if current_target_status in terminal_target_statuses:
                     continue
 
                 incoming_sources = connection.execute(
                     """
-                    SELECT source.status
+                    SELECT
+                        source.status,
+                        source.player_1_id,
+                        source.player_2_id,
+                        source.winner_id,
+                        r.source_outcome,
+                        r.target_slot
                     FROM tournament_draft_bracket_routes AS r
                     JOIN tournament_draft_bracket_matches AS source
                       ON source.bracket_match_id =
@@ -2617,8 +2670,11 @@ def propagate_draft_bracket_results(
                 all_sources_resolved = (
                     bool(incoming_sources)
                     and all(
-                        str(source["status"])
-                        in terminal_statuses
+                        _is_resolved_bracket_source(
+                            str(source["status"]),
+                            source["player_1_id"],
+                            source["player_2_id"],
+                        )
                         for source in incoming_sources
                     )
                 )
@@ -2628,6 +2684,33 @@ def propagate_draft_bracket_results(
 
                 player_1_id = target["player_1_id"]
                 player_2_id = target["player_2_id"]
+
+                # A source may have become a Bye earlier in this same pass.
+                # Its winner is not written into the target until the next
+                # routing pass. Do not decide the target from a stale empty
+                # slot in the meantime.
+                all_routed_players_applied = all(
+                    (
+                        _get_routed_bracket_player_id(
+                            source_outcome=str(
+                                source["source_outcome"]
+                            ),
+                            player_1_id=source["player_1_id"],
+                            player_2_id=source["player_2_id"],
+                            winner_id=source["winner_id"],
+                        )
+                        is None
+                    )
+                    or (
+                        player_1_id is not None
+                        if int(source["target_slot"]) == 1
+                        else player_2_id is not None
+                    )
+                    for source in incoming_sources
+                )
+
+                if not all_routed_players_applied:
+                    continue
 
                 if (
                     player_1_id is not None

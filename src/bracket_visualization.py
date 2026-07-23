@@ -995,7 +995,7 @@ def _group_matches_by_round(
         has_player = has_player_id or has_player_name
 
         if (
-            status in {"bye", "inactive"}
+            status == "inactive"
             or (status == "cancelled" and not has_player)
         ):
             continue
@@ -1074,7 +1074,7 @@ def _get_hidden_technical_match_codes(
     for match_code, match in matches_by_code.items():
         status = str(match.get("status") or "")
 
-        if status in {"bye", "inactive"}:
+        if status == "inactive":
             hidden_codes.add(match_code)
             continue
 
@@ -1085,6 +1085,34 @@ def _get_hidden_technical_match_codes(
                 "player_2_id",
             )
         )
+
+        if status == "bye":
+            has_real_cancelled_source = any(
+                (
+                    source := matches_by_code.get(
+                        str(route.get("source_code") or "")
+                    )
+                )
+                is not None
+                and str(source.get("status") or "")
+                == "cancelled"
+                and any(
+                    source.get(key) not in {None, ""}
+                    for key in (
+                        "player_1_id",
+                        "player_2_id",
+                    )
+                )
+                for route in incoming_routes.get(
+                    match_code,
+                    [],
+                )
+            )
+
+            if not has_real_cancelled_source:
+                hidden_codes.add(match_code)
+
+            continue
 
         if has_assigned_player:
             continue
@@ -1113,7 +1141,21 @@ def _get_hidden_technical_match_codes(
                 route.get("source_outcome") or ""
             )
 
-            if source_status in {"cancelled", "inactive"}:
+            source_has_player = any(
+                source.get(key) not in {None, ""}
+                for key in (
+                    "player_1_id",
+                    "player_2_id",
+                )
+            )
+
+            if source_status == "inactive":
+                continue
+
+            if (
+                source_status == "cancelled"
+                and not source_has_player
+            ):
                 continue
 
             if (

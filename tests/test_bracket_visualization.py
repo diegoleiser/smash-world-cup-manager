@@ -70,7 +70,19 @@ class BracketVisibilityTests(unittest.TestCase):
             },
         ]
 
-        grouped_rounds = bracket_view._group_matches_by_round(matches)
+        hidden_codes = (
+            bracket_view._get_hidden_technical_match_codes(
+                matches,
+                [],
+            )
+        )
+        grouped_rounds = bracket_view._group_matches_by_round(
+            [
+                match
+                for match in matches
+                if match["match_code"] not in hidden_codes
+            ]
+        )
         visible_codes = [
             match["match_code"]
             for _number, _label, round_matches in grouped_rounds
@@ -203,6 +215,53 @@ class BracketVisibilityTests(unittest.TestCase):
         )
 
         self.assertNotIn("WF", hidden_codes)
+
+    def test_real_cancelled_match_keeps_its_resulting_bye_visible(
+        self,
+    ) -> None:
+        matches = [
+            {
+                "match_code": "L2M1",
+                "status": "cancelled",
+                "player_1_id": "player-1",
+                "player_2_id": "player-2",
+            },
+            {
+                "match_code": "L2M2",
+                "status": "bye",
+                "player_1_id": "player-3",
+                "player_2_id": None,
+            },
+            {
+                "match_code": "L3M1",
+                "status": "bye",
+                "player_1_id": None,
+                "player_2_id": "player-3",
+            },
+        ]
+        routes = [
+            {
+                "source_code": "L2M1",
+                "source_outcome": "winner",
+                "target_code": "L3M1",
+                "target_slot": 1,
+            },
+            {
+                "source_code": "L2M2",
+                "source_outcome": "winner",
+                "target_code": "L3M1",
+                "target_slot": 2,
+            },
+        ]
+
+        hidden_codes = (
+            bracket_view._get_hidden_technical_match_codes(
+                matches,
+                routes,
+            )
+        )
+
+        self.assertNotIn("L3M1", hidden_codes)
 
 
 if __name__ == "__main__":
