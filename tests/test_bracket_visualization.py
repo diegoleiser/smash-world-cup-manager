@@ -117,6 +117,93 @@ class BracketVisibilityTests(unittest.TestCase):
             "L1M1",
         )
 
+    def test_future_bye_is_hidden_before_its_player_is_known(self) -> None:
+        matches = [
+            {
+                "match_code": "W1M1",
+                "status": "pending",
+                "player_1_id": "player-1",
+                "player_2_id": "player-2",
+            },
+            {
+                "match_code": "L1M1",
+                "status": "cancelled",
+                "player_1_id": None,
+                "player_2_id": None,
+            },
+            {
+                "match_code": "L2M1",
+                "status": "waiting",
+                "player_1_id": None,
+                "player_2_id": None,
+            },
+        ]
+        routes = [
+            {
+                "source_code": "W1M1",
+                "source_outcome": "loser",
+                "target_code": "L2M1",
+                "target_slot": 1,
+            },
+            {
+                "source_code": "L1M1",
+                "source_outcome": "winner",
+                "target_code": "L2M1",
+                "target_slot": 2,
+            },
+        ]
+
+        hidden_codes = (
+            bracket_view._get_hidden_technical_match_codes(
+                matches,
+                routes,
+            )
+        )
+
+        self.assertIn("L2M1", hidden_codes)
+
+    def test_normal_future_match_with_two_live_routes_stays_visible(
+        self,
+    ) -> None:
+        matches = [
+            {
+                "match_code": source_code,
+                "status": "pending",
+                "player_1_id": f"{source_code}-1",
+                "player_2_id": f"{source_code}-2",
+            }
+            for source_code in ("W1M1", "W1M2")
+        ]
+        matches.append(
+            {
+                "match_code": "WF",
+                "status": "waiting",
+                "player_1_id": None,
+                "player_2_id": None,
+            }
+        )
+        routes = [
+            {
+                "source_code": source_code,
+                "source_outcome": "winner",
+                "target_code": "WF",
+                "target_slot": slot,
+            }
+            for slot, source_code in enumerate(
+                ("W1M1", "W1M2"),
+                start=1,
+            )
+        ]
+
+        hidden_codes = (
+            bracket_view._get_hidden_technical_match_codes(
+                matches,
+                routes,
+            )
+        )
+
+        self.assertNotIn("WF", hidden_codes)
+
 
 if __name__ == "__main__":
     unittest.main()

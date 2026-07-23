@@ -1042,6 +1042,97 @@ def _group_matches_by_round(
     return grouped_rounds
 
 
+def _get_hidden_technical_match_codes(
+    matches: list[dict[str, Any]],
+    routes: list[dict[str, Any]],
+) -> set[str]:
+    """
+    Identify matches that can never become a two-player Set.
+
+    Some future Byes remain ``waiting`` until their only real incoming player
+    is known. A second incoming route may exist from an already cancelled
+    placeholder, but that route can never supply a player. Hiding the target
+    early avoids briefly showing a misleading ``TBD vs TBD`` match.
+    """
+
+    matches_by_code = {
+        str(match.get("match_code") or ""): match
+        for match in matches
+    }
+    incoming_routes: dict[
+        str,
+        list[dict[str, Any]],
+    ] = defaultdict(list)
+
+    for route in routes:
+        incoming_routes[
+            str(route.get("target_code") or "")
+        ].append(route)
+
+    hidden_codes: set[str] = set()
+
+    for match_code, match in matches_by_code.items():
+        status = str(match.get("status") or "")
+
+        if status in {"bye", "inactive"}:
+            hidden_codes.add(match_code)
+            continue
+
+        has_assigned_player = any(
+            match.get(key) not in {None, ""}
+            for key in (
+                "player_1_id",
+                "player_2_id",
+            )
+        )
+
+        if has_assigned_player:
+            continue
+
+        if status == "cancelled":
+            hidden_codes.add(match_code)
+            continue
+
+        if status != "waiting":
+            continue
+
+        viable_incoming_routes = 0
+
+        for route in incoming_routes.get(match_code, []):
+            source = matches_by_code.get(
+                str(route.get("source_code") or "")
+            )
+
+            if source is None:
+                continue
+
+            source_status = str(
+                source.get("status") or ""
+            )
+            source_outcome = str(
+                route.get("source_outcome") or ""
+            )
+
+            if source_status in {"cancelled", "inactive"}:
+                continue
+
+            if (
+                source_status == "bye"
+                and source_outcome == "loser"
+            ):
+                continue
+
+            viable_incoming_routes += 1
+
+        if (
+            incoming_routes.get(match_code)
+            and viable_incoming_routes <= 1
+        ):
+            hidden_codes.add(match_code)
+
+    return hidden_codes
+
+
 def _render_bracket_section(
     *,
     section_key: str,
@@ -1154,6 +1245,10 @@ def build_bracket_html(
     ] = defaultdict(list)
 
     match_side_by_code: dict[str, str] = {}
+    hidden_match_codes = _get_hidden_technical_match_codes(
+        matches,
+        routes,
+    )
 
     for match in matches:
         bracket_side = str(
@@ -1162,6 +1257,9 @@ def build_bracket_html(
         match_code = str(
             match.get("match_code") or ""
         )
+
+        if match_code in hidden_match_codes:
+            continue
 
         matches_by_side[bracket_side].append(
             match
