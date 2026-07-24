@@ -1033,7 +1033,9 @@ def render_player_page(
         if timeline:
             timeline_df = (
                 pd.DataFrame(timeline)
-                .sort_values("tournament_number")
+                .sort_values(
+                    ["tournament_date", "tournament_number"]
+                )
                 .reset_index(drop=True)
             )
 
@@ -1437,7 +1439,9 @@ def render_player_page(
         if timeline:
             timeline_df = (
                 pd.DataFrame(timeline)
-                .sort_values("tournament_number")
+                .sort_values(
+                    ["tournament_date", "tournament_number"]
+                )
                 .reset_index(drop=True)
             )
 

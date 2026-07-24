@@ -67,6 +67,13 @@ def calculate_elo_history(
               AND m.player_2_id IS NOT NULL
               AND m.player_1_id != m.player_2_id
             ORDER BY
+                CASE
+                    WHEN t.tournament_date IS NULL
+                      OR t.tournament_date = ''
+                    THEN 1
+                    ELSE 0
+                END,
+                t.tournament_date,
                 t.tournament_number,
                 CASE WHEN m.completed_at IS NULL THEN 1 ELSE 0 END,
                 m.completed_at,
@@ -427,7 +434,10 @@ def get_elo_ranking_timeline(
     rated_matches: dict[str, int] = {}
     timeline: list[dict[str, Any]] = []
 
-    for tournament_number in sorted(events_by_tournament):
+    # ``calculate_elo_history`` already returns tournaments in chronological
+    # order. Dict insertion order preserves that sequence even when tournament
+    # numbers are non-consecutive or imported later.
+    for tournament_number in events_by_tournament:
         for event in events_by_tournament[tournament_number]:
             winner_id = str(event["winner_id"])
             loser_id = str(event["loser_id"])
@@ -517,4 +527,3 @@ def get_player_elo_timeline(
         for entry in timeline
         if entry["player_id"] == player_id
     ]
-

@@ -11,6 +11,9 @@ import pandas as pd
 import streamlit as st
 
 import narratives
+from dashboard_pages.timeline_order import (
+    chronological_tournament_labels,
+)
 
 
 def render_home(
@@ -945,22 +948,13 @@ def render_home(
         ).sort_values(
             [
                 "Players",
+                "tournament_date",
                 "tournament_number",
             ]
         )
 
-        tournament_order = (
-            elo_history_df[
-                [
-                    "tournament",
-                    "tournament_number",
-                ]
-            ]
-            .drop_duplicates()
-            .sort_values("tournament_number")[
-                "tournament"
-            ]
-            .tolist()
+        tournament_order = chronological_tournament_labels(
+            elo_history_rows
         )
 
         segment_rows: list[dict[str, Any]] = []

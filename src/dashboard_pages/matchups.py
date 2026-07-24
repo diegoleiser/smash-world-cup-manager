@@ -536,6 +536,20 @@ def render_matchups(
 
         if timeline_rows:
             elo_df = pd.DataFrame(timeline_rows)
+            tournament_order = (
+                elo_df[
+                    [
+                        "tournament",
+                        "tournament_date",
+                        "tournament_number",
+                    ]
+                ]
+                .drop_duplicates()
+                .sort_values(
+                    ["tournament_date", "tournament_number"]
+                )["tournament"]
+                .tolist()
+            )
             elo_chart = (
                 alt.Chart(elo_df)
                 .mark_line(point=True)
@@ -543,10 +557,7 @@ def render_matchups(
                     x=alt.X(
                         "tournament:N",
                         title="Tournament",
-                        sort=alt.SortField(
-                            field="tournament_number",
-                            order="ascending",
-                        ),
+                        sort=tournament_order,
                     ),
                     y=alt.Y(
                         "elo:Q",
@@ -596,6 +607,20 @@ def render_matchups(
         if rank_rows:
             rank_df = pd.DataFrame(rank_rows)
             max_rank = int(rank_df["rank"].max())
+            tournament_order = (
+                rank_df[
+                    [
+                        "tournament",
+                        "tournament_date",
+                        "tournament_number",
+                    ]
+                ]
+                .drop_duplicates()
+                .sort_values(
+                    ["tournament_date", "tournament_number"]
+                )["tournament"]
+                .tolist()
+            )
 
             rank_chart = (
                 alt.Chart(rank_df)
@@ -604,10 +629,7 @@ def render_matchups(
                     x=alt.X(
                         "tournament:N",
                         title="Tournament",
-                        sort=alt.SortField(
-                            field="tournament_number",
-                            order="ascending",
-                        ),
+                        sort=tournament_order,
                     ),
                     y=alt.Y(
                         "rank:Q",

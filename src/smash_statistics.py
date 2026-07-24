@@ -133,7 +133,7 @@ def get_elo_tournament_changes(
     previous_by_player: dict[str, dict[str, Any]] = {}
     changes: list[dict[str, Any]] = []
 
-    for tournament_number in sorted(grouped):
+    for tournament_number in grouped:
         entries = grouped[tournament_number]
         current_by_player = {
             str(entry["player_id"]): entry
@@ -370,7 +370,7 @@ def print_elo_ranking_timeline(
 
     print("\nHistorische Elo-Rankings")
 
-    for tournament_number in sorted(grouped):
+    for tournament_number in grouped:
         entries = sorted(grouped[tournament_number], key=lambda entry: entry["rank"])
         tournament_date = entries[0]["tournament_date"]
 
