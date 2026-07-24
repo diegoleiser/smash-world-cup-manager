@@ -89,6 +89,22 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
             },
         )
 
+    def test_player_declares_every_dashboard_dependency(self) -> None:
+        self.assert_render_parameters(
+            "player",
+            "render_player_page",
+            {
+                "include_inactive",
+                "load_players",
+                "load_player_profile",
+                "load_player_timeline",
+                "load_player_history",
+                "load_player_insights",
+                "load_elo_ranking",
+                "format_ordinal",
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
