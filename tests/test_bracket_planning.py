@@ -104,7 +104,8 @@ class BracketPlanSnapshotTests(unittest.TestCase):
             32: "efa377b8d51d2b7d8fa6588632b1d8f8b2c0ec94c94a6004fd35b4963f218f10",
         },
         tournament.ENTRY_SPLIT_BY_GROUP_SEED: {
-            3: "7c19d1d2ce75490d7c72d0c1970f4538deb3324416dcf4ddc92b1efbb9ec585a",
+            3: "4cea912e867a0703de632832786334229fd310eeeeb891db58b1eaae6c1ce537",
+            4: "4cea912e867a0703de632832786334229fd310eeeeb891db58b1eaae6c1ce537",
             5: "a6e8524dd9416b16f7915a024adccb734f9fffed2130f07965f4079930dacc31",
             8: "a6e8524dd9416b16f7915a024adccb734f9fffed2130f07965f4079930dacc31",
             9: "7c2c92a372e8fc4310f0b0d36bc1e3be106d9f93335532639cacf40e50ffba4c",
@@ -147,6 +148,68 @@ class BracketPlanSnapshotTests(unittest.TestCase):
                 "GFR",
                 {route["target_code"] for route in routes},
             )
+
+    def test_four_player_split_routes_only_reference_real_matches(
+        self,
+    ) -> None:
+        matches = tournament.build_bracket_plan(
+            4,
+            tournament.ENTRY_SPLIT_BY_GROUP_SEED,
+        )
+        routes = tournament.build_bracket_route_plan(
+            4,
+            tournament.ENTRY_SPLIT_BY_GROUP_SEED,
+        )
+        match_codes = {
+            match["match_code"]
+            for match in matches
+        }
+
+        self.assertEqual(
+            match_codes,
+            {"WF", "L1M1", "LF", "GF", "GFR"},
+        )
+        self.assertTrue(
+            {
+                route["source_code"]
+                for route in routes
+            }.issubset(match_codes)
+        )
+        self.assertTrue(
+            {
+                route["target_code"]
+                for route in routes
+            }.issubset(match_codes)
+        )
+        self.assertEqual(
+            routes,
+            [
+                {
+                    "source_code": "L1M1",
+                    "source_outcome": "winner",
+                    "target_code": "LF",
+                    "target_slot": 1,
+                },
+                {
+                    "source_code": "WF",
+                    "source_outcome": "loser",
+                    "target_code": "LF",
+                    "target_slot": 2,
+                },
+                {
+                    "source_code": "WF",
+                    "source_outcome": "winner",
+                    "target_code": "GF",
+                    "target_slot": 1,
+                },
+                {
+                    "source_code": "LF",
+                    "source_outcome": "winner",
+                    "target_code": "GF",
+                    "target_slot": 2,
+                },
+            ],
+        )
 
 
 class BracketModuleBoundaryTests(unittest.TestCase):

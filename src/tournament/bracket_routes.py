@@ -267,6 +267,33 @@ def build_split_bracket_route_plan(
             }
         )
 
+    if winners_round_count == 1:
+        add_route(
+            "L1M1",
+            "winner",
+            "LF",
+            1,
+        )
+        add_route(
+            "WF",
+            "loser",
+            "LF",
+            2,
+        )
+        add_route(
+            "WF",
+            "winner",
+            "GF",
+            1,
+        )
+        add_route(
+            "LF",
+            "winner",
+            "GF",
+            2,
+        )
+        return routes
+
     # Winners advance through the Winners Bracket.
     for round_number in range(
         1,

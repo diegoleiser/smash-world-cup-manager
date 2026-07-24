@@ -185,6 +185,84 @@ class BracketGenerationTests(unittest.TestCase):
             {"d", "e"},
         )
 
+    def test_create_four_player_split_entry_bracket_routes(
+        self,
+    ) -> None:
+        with tournament.connect_db(self.db_path) as connection:
+            connection.execute(
+                """
+                DELETE FROM tournament_draft_participants
+                WHERE draft_id = 'draft'
+                  AND player_id = 'e'
+                """
+            )
+            connection.execute(
+                """
+                UPDATE tournament_drafts
+                SET
+                    format_type = 'group_stage_double_elimination',
+                    bracket_entry_mode = ?
+                WHERE draft_id = 'draft'
+                """,
+                (tournament.ENTRY_SPLIT_BY_GROUP_SEED,),
+            )
+            connection.executemany(
+                """
+                INSERT INTO tournament_draft_bracket_seeds (
+                    draft_id,
+                    player_id,
+                    bracket_seed,
+                    starts_in
+                )
+                VALUES ('draft', ?, ?, ?)
+                """,
+                [
+                    (
+                        player_id,
+                        seed,
+                        (
+                            "winners"
+                            if seed <= 2
+                            else "losers"
+                        ),
+                    )
+                    for seed, player_id in enumerate(
+                        ("a", "b", "c", "d"),
+                        start=1,
+                    )
+                ],
+            )
+
+        matches = tournament.create_draft_bracket_matches(
+            self.db_path,
+            "draft",
+        )
+        routes = tournament.create_draft_bracket_routes(
+            self.db_path,
+            "draft",
+        )
+        state = tournament.get_draft_bracket_state(
+            self.db_path,
+            "draft",
+        )
+        match_codes = {
+            match["match_code"]
+            for match in state["matches"]
+        }
+
+        self.assertEqual(
+            match_codes,
+            {"WF", "L1M1", "LF", "GF", "GFR"},
+        )
+        self.assertEqual(
+            len(matches),
+            5,
+        )
+        self.assertEqual(
+            len(routes),
+            4,
+        )
+
     def test_reset_removes_every_generated_bracket_row(
         self,
     ) -> None:
