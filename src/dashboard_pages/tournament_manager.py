@@ -1074,6 +1074,37 @@ def render_tournament_manager(
                                 "seeding, and group assignments."
                             )
 
+                            playable_group_matches = [
+                                match
+                                for match in group_matches
+                                if match["status"] != "cancelled"
+                            ]
+                            played_group_matches = [
+                                match
+                                for match in playable_group_matches
+                                if match["status"]
+                                in {"completed", "forfeit"}
+                            ]
+                            group_match_count = len(
+                                playable_group_matches
+                            )
+                            group_played_count = len(
+                                played_group_matches
+                            )
+                            group_progress = (
+                                group_played_count
+                                / group_match_count
+                                if group_match_count
+                                else 0.0
+                            )
+                            st.progress(
+                                group_progress,
+                                text=(
+                                    f"{group_played_count} of "
+                                    f"{group_match_count} group sets played"
+                                ),
+                            )
+
                             group_standings = (
                                 load_tournament_draft_group_standings(
                                     selected_draft_id,
@@ -1153,6 +1184,36 @@ def render_tournament_manager(
                                     "The group stage is complete. "
                                     "The bracket seeding is final."
                                 )
+
+                                if not bracket_generated:
+                                    if st.button(
+                                        "Generate Bracket",
+                                        type="primary",
+                                        key=(
+                                            "generate_bracket_from_group_"
+                                            f"{selected_draft_id}"
+                                        ),
+                                    ):
+                                        try:
+                                            result = (
+                                                tournament_manager
+                                                .generate_draft_bracket(
+                                                    db_path,
+                                                    selected_draft_id,
+                                                )
+                                            )
+                                        except ValueError as exc:
+                                            st.error(str(exc))
+                                        else:
+                                            st.cache_data.clear()
+                                            st.session_state[
+                                                pending_tab_key
+                                            ] = bracket_tab_label
+                                            st.success(
+                                                f"{result['bracket_size']}-"
+                                                "player bracket generated."
+                                            )
+                                            st.rerun()
                             else:
                                 st.warning(
                                     "This ranking is provisional because "
@@ -1269,7 +1330,7 @@ def render_tournament_manager(
                                 st.markdown(f"#### {group_name}")
 
                                 rounds: dict[
-                                    int,
+                                    tuple[str, int],
                                     list[dict[str, Any]],
                                 ] = {}
 
@@ -1286,15 +1347,48 @@ def render_tournament_manager(
                                     round_number = int(
                                         match["round_number"]
                                     )
+                                    match_section = (
+                                        "open"
+                                        if match["status"] == "pending"
+                                        else "played"
+                                    )
 
                                     rounds.setdefault(
-                                        round_number,
+                                        (
+                                            match_section,
+                                            round_number,
+                                        ),
                                         [],
                                     ).append(match)
 
-                                for round_number, round_matches in (
-                                    rounds.items()
-                                ):
+                                previous_match_section = None
+
+                                for (
+                                    match_section,
+                                    round_number,
+                                ), round_matches in rounds.items():
+                                    if (
+                                        match_section
+                                        != previous_match_section
+                                    ):
+                                        if match_section == "open":
+                                            st.markdown(
+                                                "##### Matches to Play"
+                                            )
+                                        else:
+                                            if (
+                                                previous_match_section
+                                                is not None
+                                            ):
+                                                st.divider()
+                                            st.markdown(
+                                                "##### Played Sets"
+                                            )
+
+                                        previous_match_section = (
+                                            match_section
+                                        )
+
                                     st.markdown(
                                         f"**Round {round_number}**"
                                     )
@@ -1714,7 +1808,12 @@ def render_tournament_manager(
             progress_matches = [
                 match
                 for match in draft_bracket_state["matches"]
-                if match["status"] != "inactive"
+                if match["status"]
+                not in {
+                    "inactive",
+                    "bye",
+                    "cancelled",
+                }
             ]
             match_count = len(progress_matches)
             completed_count = sum(
@@ -1722,8 +1821,6 @@ def render_tournament_manager(
                 in {
                     "completed",
                     "forfeit",
-                    "bye",
-                    "cancelled",
                 }
                 for match in progress_matches
             )
@@ -1736,7 +1833,7 @@ def render_tournament_manager(
                 bracket_progress,
                 text=(
                     f"{completed_count} of {match_count} "
-                    "bracket matches resolved"
+                    "bracket sets played"
                 ),
             )
 
@@ -2441,7 +2538,7 @@ def render_tournament_manager(
                     )
                     st.rerun()
 
-        st.divider()
+    st.divider()
     with st.expander("Danger Zone", expanded=False):
         st.caption(
             "Destructive actions are kept separate from the "
