@@ -20,6 +20,7 @@ from smash_stats import elo_rules  # noqa: E402
 from smash_stats import head_to_head  # noqa: E402
 from smash_stats import player_stats  # noqa: E402
 from smash_stats import rankings  # noqa: E402
+from smash_stats import records  # noqa: E402
 
 
 class EloRuleModuleBoundaryTests(unittest.TestCase):
@@ -106,6 +107,26 @@ class EloRuleModuleBoundaryTests(unittest.TestCase):
     def test_ranking_functions_are_reexported_unchanged(self) -> None:
         self.assertIs(statistics.get_ranking, rankings.get_ranking)
         self.assertIs(statistics.print_ranking, rankings.print_ranking)
+
+    def test_record_functions_are_reexported_unchanged(self) -> None:
+        self.assertIs(
+            statistics.get_smash_records,
+            records.get_smash_records,
+        )
+        self.assertIs(
+            statistics.print_smash_records,
+            records.print_smash_records,
+        )
+
+    def test_timeline_functions_are_reexported_unchanged(self) -> None:
+        self.assertIs(
+            statistics.get_elo_ranking_timeline,
+            elo_history.get_elo_ranking_timeline,
+        )
+        self.assertIs(
+            statistics.get_player_elo_timeline,
+            elo_history.get_player_elo_timeline,
+        )
 
 
 class EloRuleTests(unittest.TestCase):

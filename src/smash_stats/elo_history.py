@@ -376,4 +376,145 @@ def get_player_elo_summary(
         "peak_elo_match_id": peak_event["match_id"],
         "rated_matches": len(history),
     }
+def get_elo_ranking_timeline(
+    db_path: str | Path = DEFAULT_DB_PATH,
+    *,
+    active_only: bool = True,
+    start_rating: float = ELO_START_RATING,
+    k_factor: float = ELO_K_FACTOR,
+) -> list[dict[str, Any]]:
+    """
+    Returns a complete Elo snapshot after each tournament.
+
+    Ranks are calculated among the players visible in the selected view. With `active_only=True`, inactive players are removed first and the remaining ranks are reassigned consecutively from 1.
+    """
+
+    history = calculate_elo_history(
+        db_path,
+        start_rating=start_rating,
+        k_factor=k_factor,
+    )
+
+    if not history:
+        return []
+
+    with connect_db(db_path) as connection:
+        player_rows = connection.execute(
+            """
+            SELECT
+                player_id,
+                display_name,
+                core_player,
+                active
+            FROM players
+            """
+        ).fetchall()
+
+    players_by_id = {
+        str(row["player_id"]): row
+        for row in player_rows
+    }
+
+    events_by_tournament: dict[int, list[dict[str, Any]]] = {}
+    tournament_dates: dict[int, Any] = {}
+
+    for event in history:
+        tournament_number = int(event["tournament_number"])
+        events_by_tournament.setdefault(tournament_number, []).append(event)
+        tournament_dates[tournament_number] = event["tournament_date"]
+
+    ratings: dict[str, float] = {}
+    rated_matches: dict[str, int] = {}
+    timeline: list[dict[str, Any]] = []
+
+    for tournament_number in sorted(events_by_tournament):
+        for event in events_by_tournament[tournament_number]:
+            winner_id = str(event["winner_id"])
+            loser_id = str(event["loser_id"])
+
+            ratings[winner_id] = float(event["winner_rating_after"])
+            ratings[loser_id] = float(event["loser_rating_after"])
+
+            rated_matches[winner_id] = rated_matches.get(winner_id, 0) + 1
+            rated_matches[loser_id] = rated_matches.get(loser_id, 0) + 1
+
+        ranked_player_ids = sorted(
+            ratings,
+            key=lambda player_id: (
+                -ratings[player_id],
+                -rated_matches[player_id],
+                str(players_by_id[player_id]["display_name"]).casefold(),
+            ),
+        )
+
+        visible_player_ids = [
+            player_id
+            for player_id in ranked_player_ids
+            if not active_only or bool(players_by_id[player_id]["active"])
+        ]
+
+        ranks = {
+            player_id: rank
+            for rank, player_id in enumerate(visible_player_ids, start=1)
+        }
+
+        for player_id in visible_player_ids:
+            player = players_by_id[player_id]
+
+            timeline.append(
+                {
+                    "tournament_number": tournament_number,
+                    "tournament": f"WM {tournament_number:02d}",
+                    "tournament_date": tournament_dates[tournament_number],
+                    "player_id": player_id,
+                    "player": player["display_name"],
+                    "active": bool(player["active"]),
+                    "core_player": bool(player["core_player"]),
+                    "elo": round(ratings[player_id], 1),
+                    "elo_exact": round(ratings[player_id], 4),
+                    "rank": ranks[player_id],
+                    "rated_matches": rated_matches[player_id],
+                    "played_in_tournament": any(
+                        player_id in {
+                            str(event["winner_id"]),
+                            str(event["loser_id"]),
+                        }
+                        for event in events_by_tournament[tournament_number]
+                    ),
+                }
+            )
+
+    return timeline
+
+
+def get_player_elo_timeline(
+    player_reference: str,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    *,
+    active_only: bool = False,
+    start_rating: float = ELO_START_RATING,
+    k_factor: float = ELO_K_FACTOR,
+) -> list[dict[str, Any]]:
+    """
+    Returns a player’s Elo and rank after every tournament since their debut.
+
+    Tournaments without participation are also included: Elo remains unchanged, while rank may change due to other players’ results.
+    """
+
+    with connect_db(db_path) as connection:
+        player = resolve_player(connection, player_reference)
+        player_id = str(player["player_id"])
+
+    timeline = get_elo_ranking_timeline(
+        db_path,
+        active_only=active_only,
+        start_rating=start_rating,
+        k_factor=k_factor,
+    )
+
+    return [
+        entry
+        for entry in timeline
+        if entry["player_id"] == player_id
+    ]
 
