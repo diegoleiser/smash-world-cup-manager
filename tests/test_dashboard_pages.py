@@ -17,9 +17,14 @@ if str(SRC_DIR) not in sys.path:
 class MatchupsPageBoundaryTests(unittest.TestCase):
     """Keep the page's dashboard dependencies explicit."""
 
-    def test_render_function_declares_every_data_dependency(self) -> None:
+    def assert_render_parameters(
+        self,
+        module_name: str,
+        function_name: str,
+        expected_parameters: set[str],
+    ) -> None:
         module_path = (
-            SRC_DIR / "dashboard_pages" / "matchups.py"
+            SRC_DIR / "dashboard_pages" / f"{module_name}.py"
         )
         module_tree = ast.parse(module_path.read_text())
         render_function = next(
@@ -27,7 +32,7 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
             for node in module_tree.body
             if (
                 isinstance(node, ast.FunctionDef)
-                and node.name == "render_matchups"
+                and node.name == function_name
             )
         )
         parameters = {
@@ -38,8 +43,12 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
             )
         }
 
-        self.assertEqual(
-            parameters,
+        self.assertEqual(parameters, expected_parameters)
+
+    def test_matchups_declares_every_data_dependency(self) -> None:
+        self.assert_render_parameters(
+            "matchups",
+            "render_matchups",
             {
                 "include_inactive",
                 "load_players",
@@ -49,6 +58,20 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
                 "load_head_to_head",
                 "load_elo_ranking",
                 "load_tournament_detail",
+            },
+        )
+
+    def test_tournaments_declares_every_dashboard_dependency(self) -> None:
+        self.assert_render_parameters(
+            "tournaments",
+            "render_tournaments",
+            {
+                "load_tournaments",
+                "load_tournament_detail",
+                "load_tournament_milestones",
+                "tournament_elo_changes",
+                "format_ordinal",
+                "show_archived_match_dialog",
             },
         )
 
