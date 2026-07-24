@@ -75,6 +75,20 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
             },
         )
 
+    def test_home_declares_every_data_dependency(self) -> None:
+        self.assert_render_parameters(
+            "home",
+            "render_home",
+            {
+                "include_inactive",
+                "load_tournament_preview_data",
+                "load_elo_ranking",
+                "load_player_timeline",
+                "load_tournaments",
+                "load_database_quality",
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
