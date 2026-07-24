@@ -1,4 +1,4 @@
-# Smash-WM-Dashboard
+# Smash World Championship Dashboard
 
 ## Project Structure
 

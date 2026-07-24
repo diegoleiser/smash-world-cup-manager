@@ -34,11 +34,11 @@ def render_tournaments(
         st.warning("No tournaments found.")
         return
 
-    tournament_numbers = [int(row["WM"].split()[1]) for row in tournaments]
+    tournament_numbers = [int(row["WC"].split()[1]) for row in tournaments]
     selected_number = st.selectbox(
         "Select tournament",
         tournament_numbers,
-        format_func=lambda number: f"WM {number:02d}",
+        format_func=lambda number: f"WC {number:02d}",
     )
     detail = load_tournament_detail(int(selected_number))
     tournament = detail["tournament"]
@@ -53,7 +53,7 @@ def render_tournaments(
 
     winner_title_number = sum(
         row["Winner"] == winner
-        and int(row["WM"].split()[1]) <= selected_tournament_number
+        and int(row["WC"].split()[1]) <= selected_tournament_number
         for row in tournaments
     )
 
@@ -61,7 +61,7 @@ def render_tournaments(
         (
             row
             for row in tournaments
-            if int(row["WM"].split()[1])
+            if int(row["WC"].split()[1])
             == selected_tournament_number - 1
         ),
         None,
@@ -92,7 +92,7 @@ def render_tournaments(
         milestones=tournament_milestones,
     )
 
-    st.header(f"WM {tournament['tournament_number']:02d}")
+    st.header(f"WC {tournament['tournament_number']:02d}")
     summary_cols = st.columns(3)
     summary_cols[0].metric(
         "Date",
@@ -412,7 +412,7 @@ def render_tournaments(
                         "Winner": match["winner"] or "Pending",
                     }
                 )
-            st.dataframe(pd.DataFrame(match_rows), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(match_rows), hide_index=True, width="stretch")
         else:
             st.info("No match data is stored for this tournament.")
 
@@ -483,13 +483,13 @@ def render_tournaments(
             )
             st.altair_chart(
                 change_chart + zero_rule,
-                use_container_width=True,
+                width="stretch",
             )
 
             st.dataframe(
                 change_df,
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
                 column_config={
                     "Elo Before": st.column_config.NumberColumn(format="%.1f"),
                     "Elo After": st.column_config.NumberColumn(format="%.1f"),
@@ -521,7 +521,7 @@ def render_tournaments(
                         ]
                     ),
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                     column_config={
                         "Rank": st.column_config.NumberColumn(format="%d"),
                         "Elo": st.column_config.NumberColumn(format="%.1f"),

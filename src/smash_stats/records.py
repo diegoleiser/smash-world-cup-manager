@@ -207,7 +207,7 @@ def get_smash_records(
                 "player": event[player_key],
                 "elo": round(after, 1),
                 "tournament_number": int(event["tournament_number"]),
-                "tournament": f"WM {int(event['tournament_number']):02d}",
+                "tournament": f"WC {int(event['tournament_number']):02d}",
                 "tournament_date": event["tournament_date"],
                 "match_id": event["match_id"],
             }
@@ -225,7 +225,7 @@ def get_smash_records(
                 "before": round(before, 1),
                 "after": round(after, 1),
                 "tournament_number": int(event["tournament_number"]),
-                "tournament": f"WM {int(event['tournament_number']):02d}",
+                "tournament": f"WC {int(event['tournament_number']):02d}",
                 "tournament_date": event["tournament_date"],
                 "match_id": event["match_id"],
                 "opponent": (
@@ -445,4 +445,3 @@ def print_smash_records(records: dict[str, Any]) -> None:
             f"{gain['change']:+.1f} "
             f"against {gain['opponent']} ({gain['tournament']})"
         )
-

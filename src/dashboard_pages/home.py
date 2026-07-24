@@ -291,7 +291,7 @@ def render_home(
     )
 
     latest_tournament = (
-        tournaments[0]["WM"]
+        tournaments[0]["WC"]
         if tournaments
         else "–"
     )
@@ -1293,7 +1293,7 @@ def render_home(
 
         st.altair_chart(
             elo_history_chart,
-            use_container_width=True,
+            width="stretch",
         )
 
         st.caption(
@@ -1317,7 +1317,7 @@ def render_home(
                 {
                     "Tournament": (
                         f"World Championship "
-                        f"{int(tournament['WM'].split()[1]):02d}"
+                        f"{int(tournament['WC'].split()[1]):02d}"
                     ),
                     "Date": tournament["Date"],
                     "Champion": tournament["Winner"],

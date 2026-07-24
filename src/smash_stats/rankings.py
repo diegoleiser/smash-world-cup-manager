@@ -166,7 +166,7 @@ def print_ranking(
 ) -> None:
     """Gibt ein Playersranking als Tabelle im Terminal aus."""
 
-    print(f"\nSmash-WM-Ranking ({sort_by})")
+    print(f"\nSmash WC Ranking ({sort_by})")
     print("=" * 102)
 
     if not ranking:
@@ -197,4 +197,3 @@ def print_ranking(
             f"{game_record:>11} "
             f"{_format_percent(entry['game_winrate']):>9}"
         )
-

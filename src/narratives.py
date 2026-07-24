@@ -493,7 +493,7 @@ def generate_tournament_summary(
     """Generates a rule-based recap for one tournament."""
 
     tournament_number = int(tournament["tournament_number"])
-    tournament_name = f"WM {tournament_number:02d}"
+    tournament_name = f"WC {tournament_number:02d}"
     winner = str(tournament.get("winner") or "An unknown player")
 
     podium = {

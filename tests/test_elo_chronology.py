@@ -137,24 +137,24 @@ class EloChronologyTests(unittest.TestCase):
         labels = chronological_tournament_labels(
             [
                 {
-                    "tournament": "WM 11",
+                    "tournament": "WC 11",
                     "tournament_number": 11,
                     "tournament_date": "2026-08-01",
                 },
                 {
-                    "tournament": "WM 102",
+                    "tournament": "WC 102",
                     "tournament_number": 102,
                     "tournament_date": "2026-07-31",
                 },
                 {
-                    "tournament": "WM 102",
+                    "tournament": "WC 102",
                     "tournament_number": 102,
                     "tournament_date": "2026-07-31",
                 },
             ]
         )
 
-        self.assertEqual(labels, ["WM 102", "WM 11"])
+        self.assertEqual(labels, ["WC 102", "WC 11"])
 
 
 if __name__ == "__main__":

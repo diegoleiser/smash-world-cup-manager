@@ -331,7 +331,7 @@ def get_player_history(
     return [
         {
             "tournament_id": row["tournament_id"],
-            "tournament": f"WM {row['tournament_number']:02d}",
+            "tournament": f"WC {row['tournament_number']:02d}",
             "tournament_number": row["tournament_number"],
             "date": row["tournament_date"],
             "placement": row["placement"],
@@ -346,4 +346,3 @@ def get_player_history(
         }
         for row in rows
     ]
-

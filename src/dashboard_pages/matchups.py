@@ -301,7 +301,7 @@ def render_matchups(
     try:
         selection_event = st.dataframe(
             styled,
-            use_container_width=True,
+            width="stretch",
             on_select="rerun",
             selection_mode="single-cell",
             key="matchups_matrix_selection",
@@ -344,7 +344,7 @@ def render_matchups(
     ):
         st.dataframe(
             styled,
-            use_container_width=True,
+            width="stretch",
         )
 
     st.caption(
@@ -354,8 +354,9 @@ def render_matchups(
 
     if selected_pair is None:
         st.info(
-            "Select a matchup in the matrix to open "
-            "the comparison."
+            "Choose a non-diagonal cell to compare the player in that "
+            "row with the player in that column. The full head-to-head, "
+            "career summary, and combined timelines will open below."
         )
         return
 
@@ -760,7 +761,7 @@ def render_matchups(
                 value_title="Elo",
                 tournament_order=tournament_order,
             )
-            st.altair_chart(elo_chart, use_container_width=True)
+            st.altair_chart(elo_chart, width="stretch")
             st.caption(
                 "Dashed segments and hollow points indicate tournaments "
                 "in which the player did not participate."
@@ -806,7 +807,7 @@ def render_matchups(
                 tournament_order=tournament_order,
                 reverse_rank_axis=True,
             )
-            st.altair_chart(rank_chart, use_container_width=True)
+            st.altair_chart(rank_chart, width="stretch")
             st.caption(
                 "Rank 1 is displayed at the top. Dashed segments and "
                 "hollow points indicate tournaments in which the player "
@@ -907,7 +908,7 @@ def render_matchups(
             st.dataframe(
                 pd.DataFrame(match_rows),
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
         else:
             st.info("No head-to-head matches available.")

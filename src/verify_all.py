@@ -167,7 +167,7 @@ def verify_all(db_path: Path) -> int:
             notes = check.errors + check.warnings
             rows.append(
                 (
-                    f"WM {check.number:02d}",
+                    f"WC {check.number:02d}",
                     check.date,
                     check.winner,
                     check.participants,

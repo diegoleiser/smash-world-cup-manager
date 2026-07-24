@@ -32,7 +32,7 @@ def _get_tournament(
     ).fetchone()
 
     if tournament is None:
-        raise ValueError(f"WM {tournament_number:02d} was not found.")
+        raise ValueError(f"WC {tournament_number:02d} was not found.")
 
     return tournament
 

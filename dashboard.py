@@ -489,7 +489,7 @@ def load_tournament_preview_data() -> dict[str, Any]:
             else None
         ),
         "latest_tournament": (
-            f"WM {int(latest_tournament['tournament_number']):02d}"
+            f"WC {int(latest_tournament['tournament_number']):02d}"
             if latest_tournament
             else None
         ),
@@ -652,7 +652,7 @@ def load_tournaments() -> list[dict[str, Any]]:
 
     return [
         {
-            "WM": f"WM {row['tournament_number']:02d}",
+            "WC": f"WC {row['tournament_number']:02d}",
             "Date": row["tournament_date"],
             "Winner": row["winner"] or "Unknown",
             "Participants": row["participants"] or 0,
@@ -937,7 +937,7 @@ def show_archived_match_dialog(
     )
 
     st.caption(
-        f"WM {tournament_number:02d} · "
+        f"WC {tournament_number:02d} · "
         f"{match['round_label']}"
     )
 
@@ -1019,7 +1019,7 @@ def show_archived_match_dialog(
 
     if st.button(
         "Close",
-        use_container_width=True,
+        width="stretch",
         key=(
             f"close_archived_match_"
             f"{match['bracket_match_id']}"
@@ -1213,7 +1213,7 @@ def show_bracket_match_dialog(
             save_result = st.form_submit_button(
                 "Save Result",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
             )
 
         if save_result:
@@ -1307,7 +1307,7 @@ def show_bracket_match_dialog(
             "Reset Result",
             type="secondary",
             disabled=not confirm_reset,
-            use_container_width=True,
+            width="stretch",
             key=(
                 f"dialog_reset_result_"
                 f"{match['bracket_match_id']}"

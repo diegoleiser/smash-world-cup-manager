@@ -374,7 +374,7 @@ def print_elo_ranking_timeline(
         entries = sorted(grouped[tournament_number], key=lambda entry: entry["rank"])
         tournament_date = entries[0]["tournament_date"]
 
-        print(f"\nWM {tournament_number:02d} – {tournament_date}")
+        print(f"\nWC {tournament_number:02d} – {tournament_date}")
         print("-" * 50)
         print(f"{'Rank':>4}  {'Players':<18} {'Elo':>9}")
         print("-" * 36)
@@ -455,7 +455,7 @@ def print_biggest_upsets(upsets: list[dict[str, Any]]) -> None:
         return
 
     header = (
-        f"{'Rank':>4} {'WM':>4} {'Winner':<16} {'Loser':<16} "
+        f"{'Rank':>4} {'WC':>4} {'Winner':<16} {'Loser':<16} "
         f"{'Score':>7} {'Elo Before':>20} {'Gain':>8}"
     )
     print(header)
@@ -523,7 +523,7 @@ def print_player_elo_history(
         return
 
     header = (
-        f"{'WM':>4} {'Opponent':<16} {'Res.':>5} {'Score':>7} "
+        f"{'WC':>4} {'Opponent':<16} {'Res.':>5} {'Score':>7} "
         f"{'Before':>9} {'Change':>10} {'After':>9}"
     )
     print(header)
@@ -734,7 +734,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--tournament-number",
         type=int,
-        help="Ausgabe auf eine bestimmte WM-Nummer begrenzen",
+        help="Ausgabe auf eine bestimmte WC-Nummer begrenzen",
     )
     parser.add_argument(
         "--upsets",

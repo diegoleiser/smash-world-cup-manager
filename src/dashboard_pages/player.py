@@ -1422,7 +1422,7 @@ def render_player_page(
 
             st.altair_chart(
                 elo_chart,
-                use_container_width=True,
+                width="stretch",
             )
 
             st.caption(
@@ -1858,7 +1858,7 @@ def render_player_page(
 
             st.altair_chart(
                 rank_chart,
-                use_container_width=True,
+                width="stretch",
             )
 
             st.caption(

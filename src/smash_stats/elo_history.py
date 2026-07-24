@@ -474,7 +474,7 @@ def get_elo_ranking_timeline(
             timeline.append(
                 {
                     "tournament_number": tournament_number,
-                    "tournament": f"WM {tournament_number:02d}",
+                    "tournament": f"WC {tournament_number:02d}",
                     "tournament_date": tournament_dates[tournament_number],
                     "player_id": player_id,
                     "player": player["display_name"],

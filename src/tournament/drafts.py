@@ -72,7 +72,7 @@ def create_draft(
 
         if existing_archive is not None:
             raise ValueError(
-                f"WM {tournament_number:02d} already exists "
+                f"WC {tournament_number:02d} already exists "
                 f"in the tournament archive."
             )
 
@@ -87,7 +87,7 @@ def create_draft(
 
         if existing_draft is not None:
             raise ValueError(
-                f"A draft for WM {tournament_number:02d} "
+                f"A draft for WC {tournament_number:02d} "
                 f"already exists."
             )
 

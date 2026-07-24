@@ -129,7 +129,7 @@ def get_head_to_head(
             {
                 "match_id": row["match_id"],
                 "tournament_id": row["tournament_id"],
-                "tournament": f"WM {row['tournament_number']:02d}",
+                "tournament": f"WC {row['tournament_number']:02d}",
                 "tournament_number": row["tournament_number"],
                 "date": row["tournament_date"],
                 "stage": row["stage"],
@@ -333,4 +333,3 @@ def print_head_to_head(stats: dict[str, Any]) -> None:
         f"{last_match['tournament']} am {last_match['date']}: "
         f"{winner} gewann ({score}, {phase})"
     )
-
