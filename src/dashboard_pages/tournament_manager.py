@@ -341,9 +341,48 @@ def render_tournament_manager(
                 )
                 st.rerun()
 
-    participants_tab_label = "Participants & Seeding"
-    group_tab_label = "Group Stage"
-    bracket_tab_label = "Double Elimination Bracket"
+    participants_ready = (
+        len(draft["participants"]) >= 3
+        and all(
+            participant["manual_seed"] is not None
+            for participant in draft["participants"]
+        )
+    )
+    group_stage_complete = (
+        bool(draft_group_matches)
+        and all(
+            match["status"] != "pending"
+            for match in draft_group_matches
+        )
+    )
+    bracket_complete = bool(
+        draft_bracket_state["champion_name"]
+    )
+
+    participants_tab_label = (
+        "✓ Participants & Seeding"
+        if participants_ready
+        else "1. Participants & Seeding"
+    )
+    group_tab_label = (
+        "✓ Group Stage"
+        if group_stage_complete
+        else "2. Group Stage"
+    )
+    bracket_step_number = (
+        3
+        if draft["format_type"]
+        == tournament_manager.FORMAT_GROUP_STAGE
+        else 2
+    )
+    bracket_tab_label = (
+        "✓ Double Elimination Bracket"
+        if bracket_complete
+        else (
+            f"{bracket_step_number}. "
+            "Double Elimination Bracket"
+        )
+    )
     workflow_tab_key = f"tournament_workflow_tab_{selected_draft_id}"
     pending_tab_key = f"pending_workflow_tab_{selected_draft_id}"
 
@@ -353,10 +392,44 @@ def render_tournament_manager(
     tab_labels.append(bracket_tab_label)
 
     pending_tab = st.session_state.pop(pending_tab_key, None)
+
+    def current_label_for(
+        stored_label: str | None,
+    ) -> str | None:
+        if stored_label is None:
+            return None
+
+        for tab_label in tab_labels:
+            if (
+                "Participants & Seeding" in stored_label
+                and "Participants & Seeding" in tab_label
+            ):
+                return tab_label
+            if (
+                "Group Stage" in stored_label
+                and "Group Stage" in tab_label
+            ):
+                return tab_label
+            if (
+                "Double Elimination Bracket" in stored_label
+                and "Double Elimination Bracket" in tab_label
+            ):
+                return tab_label
+
+        return None
+
+    pending_tab = current_label_for(pending_tab)
     if pending_tab in tab_labels:
         st.session_state[workflow_tab_key] = pending_tab
-    elif st.session_state.get(workflow_tab_key) not in tab_labels:
-        st.session_state[workflow_tab_key] = participants_tab_label
+    else:
+        current_tab = current_label_for(
+            st.session_state.get(workflow_tab_key)
+        )
+        st.session_state[workflow_tab_key] = (
+            current_tab
+            if current_tab is not None
+            else participants_tab_label
+        )
 
     workflow_tabs = st.tabs(
         tab_labels,
@@ -1181,6 +1254,15 @@ def render_tournament_manager(
                                     [],
                                 ).append(match)
 
+                            first_pending_group_match_id = next(
+                                (
+                                    str(match["group_match_id"])
+                                    for match in group_matches
+                                    if match["status"] == "pending"
+                                ),
+                                None,
+                            )
+
                             for group_name, matches in (
                                 matches_by_group.items()
                             ):
@@ -1191,7 +1273,16 @@ def render_tournament_manager(
                                     list[dict[str, Any]],
                                 ] = {}
 
-                                for match in matches:
+                                ordered_group_matches = sorted(
+                                    matches,
+                                    key=lambda match: (
+                                        match["status"] != "pending",
+                                        int(match["round_number"]),
+                                        int(match["match_number"]),
+                                    ),
+                                )
+
+                                for match in ordered_group_matches:
                                     round_number = int(
                                         match["round_number"]
                                     )
@@ -1252,7 +1343,10 @@ def render_tournament_manager(
                                         with st.expander(
                                             match_label,
                                             expanded=(
-                                                match["status"] == "pending"
+                                                str(
+                                                    match["group_match_id"]
+                                                )
+                                                == first_pending_group_match_id
                                             ),
                                         ):
                                             player_1_name = str(match["player_1"])
@@ -1558,6 +1652,19 @@ def render_tournament_manager(
                         "the bracket."
                     )
 
+            if not bracket_can_be_generated:
+                if st.button(
+                    "Go to Group Stage",
+                    key=(
+                        f"go_to_group_stage_"
+                        f"{selected_draft_id}"
+                    ),
+                ):
+                    st.session_state[pending_tab_key] = (
+                        group_tab_label
+                    )
+                    st.rerun()
+
         if not bracket_generated:
             if st.button(
                 "Generate Bracket",
@@ -1602,6 +1709,35 @@ def render_tournament_manager(
             bracket_metrics[3].metric(
                 "Completed",
                 draft_bracket_state["completed_count"],
+            )
+
+            progress_matches = [
+                match
+                for match in draft_bracket_state["matches"]
+                if match["status"] != "inactive"
+            ]
+            match_count = len(progress_matches)
+            completed_count = sum(
+                match["status"]
+                in {
+                    "completed",
+                    "forfeit",
+                    "bye",
+                    "cancelled",
+                }
+                for match in progress_matches
+            )
+            bracket_progress = (
+                completed_count / match_count
+                if match_count
+                else 0.0
+            )
+            st.progress(
+                bracket_progress,
+                text=(
+                    f"{completed_count} of {match_count} "
+                    "bracket matches resolved"
+                ),
             )
 
             if draft_bracket_state["champion_name"]:
@@ -1770,6 +1906,55 @@ def render_tournament_manager(
                     None,
                 )
 
+            ready_matches = [
+                match
+                for match in bracket_matches
+                if match["status"] == "pending"
+            ]
+
+            st.markdown("### Up Next")
+
+            if ready_matches:
+                ready_columns = st.columns(
+                    min(3, len(ready_matches))
+                )
+
+                for index, match in enumerate(
+                    ready_matches[:3]
+                ):
+                    player_1_name = (
+                        str(match["player_1_name"])
+                        if match["player_1_name"]
+                        else "TBD"
+                    )
+                    player_2_name = (
+                        str(match["player_2_name"])
+                        if match["player_2_name"]
+                        else "TBD"
+                    )
+                    button_label = (
+                        f"{match['match_code']} · "
+                        f"{player_1_name} vs {player_2_name}"
+                    )
+
+                    if ready_columns[index].button(
+                        button_label,
+                        key=(
+                            f"open_ready_match_"
+                            f"{match['bracket_match_id']}"
+                        ),
+                        width="stretch",
+                    ):
+                        st.session_state[
+                            dialog_state_key
+                        ] = str(match["match_code"])
+                        st.rerun()
+            else:
+                st.caption(
+                    "No match is ready right now. Complete an earlier "
+                    "result to advance the bracket."
+                )
+
             st.markdown("### Bracket View")
 
             clicked_match_code = (
@@ -1887,7 +2072,25 @@ def render_tournament_manager(
                 ), round_matches in matches_by_round.items():
                     st.markdown(f"#### {round_label}")
 
-                    for match in round_matches:
+                    ordered_round_matches = sorted(
+                        round_matches,
+                        key=lambda match: (
+                            {
+                                "pending": 0,
+                                "waiting": 1,
+                                "completed": 2,
+                                "forfeit": 2,
+                                "bye": 2,
+                                "cancelled": 2,
+                            }.get(
+                                str(match["status"]),
+                                3,
+                            ),
+                            int(match["match_number"]),
+                        ),
+                    )
+
+                    for match in ordered_round_matches:
                         player_1_name = (
                             str(match["player_1_name"])
                             if match["player_1_name"]
@@ -2239,8 +2442,7 @@ def render_tournament_manager(
                     st.rerun()
 
         st.divider()
-    with st.container(border=True):
-        st.subheader("Danger Zone")
+    with st.expander("Danger Zone", expanded=False):
         st.caption(
             "Destructive actions are kept separate from the "
             "tournament workflow."
