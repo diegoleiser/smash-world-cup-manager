@@ -1,5 +1,8 @@
+"""Manually verify Challonge credentials and API connectivity."""
+
 import os
 import sys
+from typing import Any
 
 import requests
 from dotenv import load_dotenv
@@ -12,7 +15,7 @@ TOURNAMENT_ID = os.getenv("CHALLONGE_TEST_TOURNAMENT_ID")
 BASE_URL = "https://api.challonge.com/v1"
 
 
-def get_json(endpoint: str):
+def get_json(endpoint: str) -> Any:
     session = requests.Session()
     session.trust_env = False
     response = session.get(
@@ -32,7 +35,7 @@ def get_json(endpoint: str):
     return response.json()
 
 
-def main():
+def main() -> None:
     if not API_KEY:
         sys.exit("No API key found. Check the .env file.")
     if not TOURNAMENT_ID:

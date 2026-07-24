@@ -60,6 +60,13 @@ Then import a tournament:
 python src/challonge_import.py wc_01 --challonge-id YOUR_TOURNAMENT_SLUG --replace
 ```
 
+To test the configured credentials without importing data, set
+`CHALLONGE_TEST_TOURNAMENT_ID` in `.env` and run:
+
+```bash
+python src/check_challonge_connection.py
+```
+
 Manual corrections can be stored in `data/overrides/`.
 
 ## Verification
