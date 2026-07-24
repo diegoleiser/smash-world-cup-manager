@@ -404,7 +404,14 @@ def seed_draft_bracket_matches(
                     bracket_side
                     == BRACKET_SIDE_WINNERS
                 ):
-                    match_code = f"W1M{match_number}"
+                    if (
+                        bracket_entry_mode
+                        == ENTRY_SPLIT_BY_GROUP_SEED
+                        and bracket_size == 4
+                    ):
+                        match_code = "WF"
+                    else:
+                        match_code = f"W1M{match_number}"
                 else:
                     match_code = f"L1M{match_number}"
 

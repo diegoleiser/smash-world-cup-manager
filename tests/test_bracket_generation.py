@@ -241,10 +241,18 @@ class BracketGenerationTests(unittest.TestCase):
             self.db_path,
             "draft",
         )
+        seeded_matches = tournament.seed_draft_bracket_matches(
+            self.db_path,
+            "draft",
+        )
         state = tournament.get_draft_bracket_state(
             self.db_path,
             "draft",
         )
+        matches_by_code = {
+            match["match_code"]: match
+            for match in state["matches"]
+        }
         match_codes = {
             match["match_code"]
             for match in state["matches"]
@@ -261,6 +269,27 @@ class BracketGenerationTests(unittest.TestCase):
         self.assertEqual(
             len(routes),
             4,
+        )
+        self.assertEqual(
+            {
+                row["match_code"]
+                for row in seeded_matches
+            },
+            {"WF", "L1M1"},
+        )
+        self.assertEqual(
+            {
+                matches_by_code["WF"]["player_1_id"],
+                matches_by_code["WF"]["player_2_id"],
+            },
+            {"a", "b"},
+        )
+        self.assertEqual(
+            {
+                matches_by_code["L1M1"]["player_1_id"],
+                matches_by_code["L1M1"]["player_2_id"],
+            },
+            {"c", "d"},
         )
 
     def test_reset_removes_every_generated_bracket_row(
