@@ -105,6 +105,28 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
             },
         )
 
+    def test_tournament_manager_declares_every_dashboard_dependency(
+        self,
+    ) -> None:
+        self.assert_render_parameters(
+            "tournament_manager",
+            "render_tournament_manager",
+            {
+                "db_path",
+                "load_players",
+                "load_tournaments",
+                "load_tournament_drafts",
+                "load_tournament_draft",
+                "load_tournament_draft_groups",
+                "load_tournament_draft_group_matches",
+                "load_tournament_draft_group_standings",
+                "load_tournament_draft_global_group_ranking",
+                "load_tournament_draft_bracket_state",
+                "load_tournament_draft_finalization_preview",
+                "show_bracket_match_dialog",
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
