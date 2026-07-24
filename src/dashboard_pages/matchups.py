@@ -13,6 +13,210 @@ import narratives
 from tournament.archived_bracket import build_archived_bracket_matches
 
 
+def _build_combined_history_chart(
+    rows: list[dict[str, Any]],
+    *,
+    value_field: str,
+    value_title: str,
+    tournament_order: list[str],
+    reverse_rank_axis: bool = False,
+) -> alt.LayerChart:
+    """Build a two-player timeline using the Home-page visual language."""
+
+    history_df = pd.DataFrame(rows)
+    order_by_tournament = {
+        tournament: position
+        for position, tournament in enumerate(tournament_order)
+    }
+    history_df["_tournament_order"] = history_df["tournament"].map(
+        order_by_tournament
+    )
+    history_df = history_df.sort_values(
+        ["Players", "_tournament_order"]
+    )
+
+    segment_rows: list[dict[str, Any]] = []
+    for player_name, player_rows in history_df.groupby(
+        "Players",
+        sort=False,
+    ):
+        ordered_rows = player_rows.to_dict("records")
+        for previous, current in zip(
+            ordered_rows,
+            ordered_rows[1:],
+        ):
+            segment_rows.append(
+                {
+                    "Players": player_name,
+                    "start_tournament": previous["tournament"],
+                    "end_tournament": current["tournament"],
+                    "start_value": previous[value_field],
+                    "end_value": current[value_field],
+                    "segment_type": (
+                        "Played"
+                        if bool(current["played_in_tournament"])
+                        else "Did not participate"
+                    ),
+                }
+            )
+
+    segment_df = pd.DataFrame(segment_rows)
+    if segment_df.empty:
+        segment_df = pd.DataFrame(
+            columns=[
+                "Players",
+                "start_tournament",
+                "end_tournament",
+                "start_value",
+                "end_value",
+                "segment_type",
+            ]
+        )
+
+    if reverse_rank_axis:
+        max_value = int(history_df[value_field].max())
+        value_scale = alt.Scale(
+            domain=[max_value + 0.5, 0.5],
+        )
+        value_axis = alt.Axis(
+            values=list(range(1, max_value + 1)),
+            format="d",
+            tickMinStep=1,
+            labelOverlap=False,
+        )
+    else:
+        value_scale = alt.Scale(zero=False)
+        value_axis = alt.Axis()
+
+    def value_encoding(field: str) -> alt.Y:
+        return alt.Y(
+            f"{field}:Q",
+            title=value_title,
+            scale=value_scale,
+            axis=value_axis,
+        )
+
+    solid_segments = (
+        alt.Chart(
+            segment_df[
+                segment_df["segment_type"] == "Played"
+            ]
+        )
+        .mark_rule(strokeWidth=2)
+        .encode(
+            x=alt.X(
+                "start_tournament:N",
+                title="Tournament",
+                sort=tournament_order,
+            ),
+            x2="end_tournament:N",
+            y=value_encoding("start_value"),
+            y2="end_value:Q",
+            color=alt.Color(
+                "Players:N",
+                title=None,
+                legend=alt.Legend(
+                    orient="right",
+                    symbolType="circle",
+                    symbolSize=100,
+                ),
+            ),
+        )
+    )
+
+    dashed_segments = (
+        alt.Chart(
+            segment_df[
+                segment_df["segment_type"]
+                == "Did not participate"
+            ]
+        )
+        .mark_rule(
+            strokeWidth=2,
+            strokeDash=[6, 4],
+        )
+        .encode(
+            x=alt.X(
+                "start_tournament:N",
+                title="Tournament",
+                sort=tournament_order,
+            ),
+            x2="end_tournament:N",
+            y=value_encoding("start_value"),
+            y2="end_value:Q",
+            color=alt.Color("Players:N", title=None),
+        )
+    )
+
+    tooltip = [
+        alt.Tooltip("Players:N", title="Player"),
+        alt.Tooltip("tournament:N", title="Tournament"),
+        alt.Tooltip("tournament_date:N", title="Date"),
+        alt.Tooltip(
+            f"{value_field}:Q",
+            title=value_title,
+            format=".1f" if value_field == "elo" else "d",
+        ),
+        alt.Tooltip(
+            "played_in_tournament:N",
+            title="Participated",
+        ),
+    ]
+
+    played_points = (
+        alt.Chart(
+            history_df[
+                history_df["played_in_tournament"]
+            ]
+        )
+        .mark_point(
+            filled=True,
+            strokeWidth=2,
+            size=90,
+        )
+        .encode(
+            x=alt.X(
+                "tournament:N",
+                title="Tournament",
+                sort=tournament_order,
+            ),
+            y=value_encoding(value_field),
+            color=alt.Color("Players:N", legend=None),
+            tooltip=tooltip,
+        )
+    )
+
+    missed_points = (
+        alt.Chart(
+            history_df[
+                ~history_df["played_in_tournament"]
+            ]
+        )
+        .mark_point(
+            filled=False,
+            strokeWidth=2.5,
+            size=90,
+        )
+        .encode(
+            x=alt.X(
+                "tournament:N",
+                title="Tournament",
+                sort=tournament_order,
+            ),
+            y=value_encoding(value_field),
+            color=alt.Color("Players:N", legend=None),
+            tooltip=tooltip,
+        )
+    )
+
+    return (
+        solid_segments
+        + dashed_segments
+        + played_points
+        + missed_points
+    ).properties(height=460)
+
+
 def render_matchups(
     include_inactive: bool,
     *,
@@ -550,42 +754,16 @@ def render_matchups(
                 )["tournament"]
                 .tolist()
             )
-            elo_chart = (
-                alt.Chart(elo_df)
-                .mark_line(point=True)
-                .encode(
-                    x=alt.X(
-                        "tournament:N",
-                        title="Tournament",
-                        sort=tournament_order,
-                    ),
-                    y=alt.Y(
-                        "elo:Q",
-                        title="Elo",
-                        scale=alt.Scale(zero=False),
-                    ),
-                    color=alt.Color("Players:N", title=None),
-                    strokeDash=alt.condition(
-                        "datum.played_in_tournament",
-                        alt.value([1, 0]),
-                        alt.value([5, 4]),
-                    ),
-                    tooltip=[
-                        alt.Tooltip("Players:N"),
-                        alt.Tooltip("tournament:N", title="Tournament"),
-                        alt.Tooltip("elo:Q", title="Elo", format=".1f"),
-                        alt.Tooltip("rank:Q", title="Rank"),
-                        alt.Tooltip(
-                            "played_in_tournament:N",
-                            title="Participated",
-                        ),
-                    ],
-                )
-                .properties(height=460)
+            elo_chart = _build_combined_history_chart(
+                timeline_rows,
+                value_field="elo",
+                value_title="Elo",
+                tournament_order=tournament_order,
             )
             st.altair_chart(elo_chart, use_container_width=True)
             st.caption(
-                "Dashed segments indicate tournaments in which the player did not participate."
+                "Dashed segments and hollow points indicate tournaments "
+                "in which the player did not participate."
             )
         else:
             st.info("No Elo history is available for these players yet.")
@@ -606,7 +784,6 @@ def render_matchups(
 
         if rank_rows:
             rank_df = pd.DataFrame(rank_rows)
-            max_rank = int(rank_df["rank"].max())
             tournament_order = (
                 rank_df[
                     [
@@ -622,40 +799,19 @@ def render_matchups(
                 .tolist()
             )
 
-            rank_chart = (
-                alt.Chart(rank_df)
-                .mark_line(point=True)
-                .encode(
-                    x=alt.X(
-                        "tournament:N",
-                        title="Tournament",
-                        sort=tournament_order,
-                    ),
-                    y=alt.Y(
-                        "rank:Q",
-                        title="Rank",
-                        scale=alt.Scale(
-                            domain=[max_rank + 0.5, 0.5],
-                        ),
-                        axis=alt.Axis(
-                            values=list(range(1, max_rank + 1)),
-                            format="d",
-                            tickMinStep=1,
-                            labelOverlap=False,
-                        ),
-                    ),
-                    color=alt.Color("Players:N", title=None),
-                    tooltip=[
-                        alt.Tooltip("Players:N"),
-                        alt.Tooltip("tournament:N", title="Tournament"),
-                        alt.Tooltip("rank:Q", title="Rank"),
-                        alt.Tooltip("elo:Q", title="Elo", format=".1f"),
-                    ],
-                )
-                .properties(height=460)
+            rank_chart = _build_combined_history_chart(
+                rank_rows,
+                value_field="rank",
+                value_title="Rank",
+                tournament_order=tournament_order,
+                reverse_rank_axis=True,
             )
             st.altair_chart(rank_chart, use_container_width=True)
-            st.caption("Rank 1 is displayed at the top.")
+            st.caption(
+                "Rank 1 is displayed at the top. Dashed segments and "
+                "hollow points indicate tournaments in which the player "
+                "did not participate."
+            )
         else:
             st.info("No ranking history is available for these players yet.")
 
