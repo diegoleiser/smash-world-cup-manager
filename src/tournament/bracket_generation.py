@@ -909,6 +909,17 @@ def get_draft_bracket_state(
                 champion["display_name"]
             )
 
+    playable_sets = [
+        match
+        for match in matches
+        if match["status"]
+        not in {
+            "inactive",
+            "bye",
+            "cancelled",
+        }
+    ]
+
     return {
         "generated": bool(matches),
         "matches": matches,
@@ -927,6 +938,19 @@ def get_draft_bracket_state(
             match["status"]
             in {"completed", "forfeit", "bye"}
             for match in matches
+        ),
+        "playable_set_count": len(playable_sets),
+        "ready_set_count": sum(
+            match["status"] == "pending"
+            for match in playable_sets
+        ),
+        "waiting_set_count": sum(
+            match["status"] == "waiting"
+            for match in playable_sets
+        ),
+        "played_set_count": sum(
+            match["status"] in {"completed", "forfeit"}
+            for match in playable_sets
         ),
         "champion_id": champion_id,
         "champion_name": champion_name,

@@ -176,6 +176,12 @@ class BracketGenerationTests(unittest.TestCase):
         )
         self.assertEqual(matches_by_code["W1M1"]["status"], "bye")
         self.assertEqual(matches_by_code["W1M1"]["winner_id"], "a")
+        self.assertEqual(state["played_set_count"], 0)
+        self.assertEqual(
+            state["playable_set_count"],
+            state["ready_set_count"]
+            + state["waiting_set_count"],
+        )
         self.assertEqual(matches_by_code["W1M2"]["status"], "pending")
         self.assertEqual(
             {

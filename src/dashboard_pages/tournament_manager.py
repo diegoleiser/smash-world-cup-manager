@@ -457,8 +457,8 @@ def render_tournament_manager(
             else:
                 st.info(
                     "Participants, seeding, and group assignments are locked "
-                    "because the group matches have already been generated. "
-                    "Reset the group matches to make changes."
+                    "because the group sets have already been generated. "
+                    "Reset the group sets to make changes."
                 )
 
         all_players = load_players(True)
@@ -864,7 +864,7 @@ def render_tournament_manager(
                     if groups and not setup_locked:
                         st.caption(
                             "You can still adjust or recreate the groups "
-                            "until the group matches are generated."
+                            "until the group sets are generated."
                         )
 
                     if groups:
@@ -1041,13 +1041,13 @@ def render_tournament_manager(
                                     st.rerun()
 
                         st.divider()
-                        st.markdown("### Group Matches")
+                        st.markdown("### Group Sets")
 
                         group_matches = draft_group_matches
 
                         if not setup_locked:
                             if st.button(
-                                "Generate Group Matches",
+                                "Generate Group Sets",
                                 type="primary",
                                 key=(
                                     f"generate_group_matches_"
@@ -1064,13 +1064,13 @@ def render_tournament_manager(
                                 else:
                                     st.cache_data.clear()
                                     st.success(
-                                        "Round-robin group matches generated."
+                                        "Round-robin group sets generated."
                                     )
                                     st.rerun()
 
                         if group_matches:
                             st.caption(
-                                "Reset the group matches to unlock participants, "
+                                "Reset the group sets to unlock participants, "
                                 "seeding, and group assignments."
                             )
 
@@ -1167,7 +1167,7 @@ def render_tournament_manager(
 
                                 st.caption(
                                     f"{group_standing['decided_matches']} of "
-                                    f"{group_standing['total_matches']} matches "
+                                    f"{group_standing['total_matches']} sets "
                                     "decided"
                                 )
 
@@ -1218,7 +1218,7 @@ def render_tournament_manager(
                                 st.warning(
                                     "This ranking is provisional because "
                                     f"{global_ranking['pending_matches']} "
-                                    "group matches are still pending."
+                                    "group sets are still pending."
                                 )
 
                             global_ranking_rows = []
@@ -1300,7 +1300,7 @@ def render_tournament_manager(
                             )
 
                             st.divider()
-                            st.markdown("### Match Results")
+                            st.markdown("### Set Results")
 
                             matches_by_group: dict[
                                 str,
@@ -1373,7 +1373,7 @@ def render_tournament_manager(
                                     ):
                                         if match_section == "open":
                                             st.markdown(
-                                                "##### Matches to Play"
+                                                "##### Sets to Play"
                                             )
                                         else:
                                             if (
@@ -1428,7 +1428,7 @@ def render_tournament_manager(
                                         )
 
                                         match_label = (
-                                            f"Match {match['match_number']} · "
+                                            f"Set {match['match_number']} · "
                                             f"{match['player_1']} vs "
                                             f"{match['player_2']} · "
                                             f"{match_state}"
@@ -1680,7 +1680,7 @@ def render_tournament_manager(
                                                 else:
                                                     st.cache_data.clear()
                                                     st.success(
-                                                        "Match result saved."
+                                                        "Set result saved."
                                                     )
                                                     st.rerun()
 
@@ -1689,11 +1689,11 @@ def render_tournament_manager(
                                     "The group stage is locked because the "
                                     "bracket has already been generated. "
                                     "Reset the bracket first if you need to "
-                                    "reset the group matches."
+                                    "reset the group sets."
                                 )
 
                             if st.button(
-                                "Reset Group Matches",
+                                "Reset Group Sets",
                                 type="secondary",
                                 key=(
                                     f"reset_group_matches_"
@@ -1711,7 +1711,7 @@ def render_tournament_manager(
                                 else:
                                     st.cache_data.clear()
                                     st.success(
-                                        "Group matches reset."
+                                        "Group sets reset."
                                     )
                                     st.rerun()
 
@@ -1756,7 +1756,7 @@ def render_tournament_manager(
                 if not global_ranking["complete"]:
                     bracket_can_be_generated = False
                     st.info(
-                        "Complete all group matches before generating "
+                        "Complete all group sets before generating "
                         "the bracket."
                     )
 
@@ -1794,50 +1794,43 @@ def render_tournament_manager(
                     st.session_state[pending_tab_key] = bracket_tab_label
                     st.success(
                         f"{result['bracket_size']}-player bracket "
-                        f"generated with "
-                        f"{result['matches_created']} matches."
+                        "generated successfully."
                     )
                     st.rerun()
 
         else:
+            match_count = int(
+                draft_bracket_state["playable_set_count"]
+            )
+            ready_count = int(
+                draft_bracket_state["ready_set_count"]
+            )
+            waiting_count = int(
+                draft_bracket_state["waiting_set_count"]
+            )
+            completed_count = int(
+                draft_bracket_state["played_set_count"]
+            )
+
             bracket_metrics = st.columns(4)
 
             bracket_metrics[0].metric(
-                "Matches",
-                draft_bracket_state["match_count"],
+                "Sets",
+                match_count,
             )
             bracket_metrics[1].metric(
                 "Ready",
-                draft_bracket_state["pending_count"],
+                ready_count,
             )
             bracket_metrics[2].metric(
                 "Waiting",
-                draft_bracket_state["waiting_count"],
+                waiting_count,
             )
             bracket_metrics[3].metric(
-                "Completed",
-                draft_bracket_state["completed_count"],
+                "Played",
+                completed_count,
             )
 
-            progress_matches = [
-                match
-                for match in draft_bracket_state["matches"]
-                if match["status"]
-                not in {
-                    "inactive",
-                    "bye",
-                    "cancelled",
-                }
-            ]
-            match_count = len(progress_matches)
-            completed_count = sum(
-                match["status"]
-                in {
-                    "completed",
-                    "forfeit",
-                }
-                for match in progress_matches
-            )
             bracket_progress = (
                 completed_count / match_count
                 if match_count
@@ -1880,7 +1873,7 @@ def render_tournament_manager(
                         finalization_preview["participant_count"],
                     )
                     finalization_cols[2].metric(
-                        "Matches to Archive",
+                        "Sets to Archive",
                         finalization_preview["matches_to_archive"],
                     )
                     finalization_cols[3].metric(
@@ -1926,7 +1919,7 @@ def render_tournament_manager(
                     ):
                         st.caption(
                             f"{finalization_preview['automatic_bracket_matches_omitted']} "
-                            "automatic, cancelled, or inactive bracket matches "
+                            "automatic, cancelled, or inactive bracket entries "
                             "will not be added to the archive."
                         )
 
@@ -1937,13 +1930,13 @@ def render_tournament_manager(
                     ):
                         st.caption(
                             f"{finalization_preview['cancelled_group_matches_omitted']} "
-                            "cancelled group matches will not be added "
+                            "cancelled group sets will not be added "
                             "to the archive."
                         )
 
                     st.warning(
                         "Finalizing writes the tournament, participants, "
-                        "placements, and match results to the permanent archive. "
+                        "placements, and set results to the permanent archive. "
                         "The draft can no longer be edited afterwards."
                     )
 
@@ -1988,7 +1981,7 @@ def render_tournament_manager(
                             st.success(
                                 f"WC {result['tournament_number']:02d} "
                                 f"was archived successfully. "
-                                f"{result['matches_archived']} matches "
+                                f"{result['matches_archived']} sets "
                                 "were added."
                             )
                             st.rerun()
@@ -2062,7 +2055,7 @@ def render_tournament_manager(
                         st.rerun()
             else:
                 st.caption(
-                    "No match is ready right now. Complete an earlier "
+                    "No set is ready right now. Complete an earlier "
                     "result to advance the bracket."
                 )
 
@@ -2113,7 +2106,7 @@ def render_tournament_manager(
                         None,
                     )
 
-            st.markdown("### Match Management")
+            st.markdown("### Set Management")
 
             visible_bracket_matches = [
                 match
@@ -2325,7 +2318,7 @@ def render_tournament_manager(
 
                             if match_status == "waiting":
                                 st.info(
-                                    "This match is waiting for players "
+                                    "This set is waiting for players "
                                     "from earlier rounds."
                                 )
 
@@ -2337,7 +2330,7 @@ def render_tournament_manager(
 
                             elif match_status == "cancelled":
                                 st.info(
-                                    "This match has been cancelled."
+                                    "This set has been cancelled."
                                 )
 
                             elif match_status == "pending":
@@ -2477,7 +2470,7 @@ def render_tournament_manager(
                             }:
                                 st.warning(
                                     "Resetting this result also clears all "
-                                    "dependent later bracket matches."
+                                    "dependent later bracket sets."
                                 )
 
                                 confirm_result_reset = st.checkbox(
@@ -2517,12 +2510,12 @@ def render_tournament_manager(
                                         st.success(
                                             f"{result['match_code']} reset. "
                                             f"{result['matches_cleared']} "
-                                            "dependent matches were cleared."
+                                            "dependent sets were cleared."
                                         )
                                         st.rerun()
 
             st.warning(
-                "Resetting the bracket deletes all bracket matches "
+                "Resetting the bracket deletes all bracket sets "
                 "and results. Group-stage results are preserved."
             )
 
@@ -2547,8 +2540,7 @@ def render_tournament_manager(
                 else:
                     st.cache_data.clear()
                     st.success(
-                        f"Bracket reset: "
-                        f"{result['matches_deleted']} matches deleted."
+                        "Bracket reset successfully."
                     )
                     st.rerun()
 
