@@ -283,6 +283,15 @@ class TournamentFinalizationTests(unittest.TestCase):
         self.assertEqual(preview["bracket_matches_to_archive"], 2)
 
     def test_finalize_archives_matches_and_completes_draft(self) -> None:
+        with tournament.connect_db(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE players
+                SET active = 0
+                WHERE player_id = 'd'
+                """
+            )
+
         result = tournament.finalize_draft_tournament(
             self.db_path,
             "draft",
@@ -327,6 +336,13 @@ class TournamentFinalizationTests(unittest.TestCase):
                 WHERE draft_id = 'draft'
                 """
             ).fetchone()["status"]
+            reactivated_player = connection.execute(
+                """
+                SELECT active
+                FROM players
+                WHERE player_id = 'd'
+                """
+            ).fetchone()["active"]
 
         self.assertEqual(
             tuple(archived_tournament),
@@ -348,6 +364,7 @@ class TournamentFinalizationTests(unittest.TestCase):
             [1, 2, 3],
         )
         self.assertEqual(draft_status, "completed")
+        self.assertEqual(reactivated_player, 1)
         self.assertEqual(result["matches_archived"], 3)
 
     def test_unfinished_match_blocks_preview(self) -> None:
@@ -374,6 +391,13 @@ class TournamentFinalizationTests(unittest.TestCase):
 
     def test_archive_failure_rolls_back_every_write(self) -> None:
         with tournament.connect_db(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE players
+                SET active = 0
+                WHERE player_id = 'd'
+                """
+            )
             connection.execute(
                 """
                 CREATE TRIGGER reject_archived_match
@@ -407,10 +431,18 @@ class TournamentFinalizationTests(unittest.TestCase):
                 WHERE draft_id = 'draft'
                 """
             ).fetchone()["status"]
+            inactive_player = connection.execute(
+                """
+                SELECT active
+                FROM players
+                WHERE player_id = 'd'
+                """
+            ).fetchone()["active"]
 
         self.assertEqual(tournament_count, 0)
         self.assertEqual(participant_count, 0)
         self.assertEqual(draft_status, "draft")
+        self.assertEqual(inactive_player, 0)
 
 
 class TournamentFinalizationModuleBoundaryTests(unittest.TestCase):

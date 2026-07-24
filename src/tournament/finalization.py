@@ -820,6 +820,22 @@ def finalize_draft_tournament(
             play_order += 1
             archived_bracket_matches += 1
 
+        # A successfully archived appearance makes every participant active
+        # again. Keeping this update inside the archive transaction ensures
+        # that a failed finalization cannot change player activity by itself.
+        connection.execute(
+            """
+            UPDATE players
+            SET active = 1
+            WHERE player_id IN (
+                SELECT player_id
+                FROM tournament_draft_participants
+                WHERE draft_id = ?
+            )
+            """,
+            (draft_id,),
+        )
+
         connection.execute(
             """
             UPDATE tournament_drafts
