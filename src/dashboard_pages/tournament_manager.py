@@ -222,26 +222,6 @@ def render_tournament_manager(
         draft_bracket_state["generated"]
     )
 
-    setup_toggle_key = (
-        f"show_setup_details_{selected_draft_id}"
-    )
-    previous_bracket_key = (
-        f"previous_bracket_generated_{selected_draft_id}"
-    )
-    previous_bracket_generated = st.session_state.get(
-        previous_bracket_key
-    )
-
-    if previous_bracket_generated is None:
-        st.session_state[setup_toggle_key] = not bracket_generated
-    elif previous_bracket_generated != bracket_generated:
-        st.session_state[setup_toggle_key] = not bracket_generated
-
-    st.session_state[previous_bracket_key] = bracket_generated
-    show_setup_details = bool(
-        st.session_state[setup_toggle_key]
-    )
-
     setup_locked = bool(
         draft_group_matches
         or bracket_generated
@@ -304,28 +284,6 @@ def render_tournament_manager(
         unsafe_allow_html=True,
     )
 
-    jump_links = []
-
-    if show_setup_details:
-        jump_links.append("[Participants](#participants)")
-
-        if (
-            draft["format_type"]
-            == tournament_manager.FORMAT_GROUP_STAGE
-        ):
-            jump_links.append("[Group Stage](#group-stage)")
-
-    jump_links.append(
-        "[Double Elimination Bracket](#double-elimination-bracket)"
-    )
-
-    if draft_bracket_state["champion_name"]:
-        jump_links.append("[Finalize Tournament](#finalize-tournament)")
-
-    jump_links.append("[Danger Zone](#danger-zone)")
-
-    st.markdown(f"**Jump to:** {' · '.join(jump_links)}")
-
     if draft["status"] == "completed":
         st.success(
             "This tournament has been finalized and added "
@@ -383,16 +341,37 @@ def render_tournament_manager(
                 )
                 st.rerun()
 
-    show_setup_details = st.toggle(
-        "Show setup and group-stage details",
-        key=setup_toggle_key,
-        help=(
-            "Participants, seeding, and group-stage details are collapsed "
-            "after the bracket has been generated."
-        ),
-    )
+    participants_tab_label = "Participants & Seeding"
+    group_tab_label = "Group Stage"
+    bracket_tab_label = "Double Elimination Bracket"
+    workflow_tab_key = f"tournament_workflow_tab_{selected_draft_id}"
+    pending_tab_key = f"pending_workflow_tab_{selected_draft_id}"
 
-    if show_setup_details:
+    tab_labels = [participants_tab_label]
+    if draft["format_type"] == tournament_manager.FORMAT_GROUP_STAGE:
+        tab_labels.append(group_tab_label)
+    tab_labels.append(bracket_tab_label)
+
+    pending_tab = st.session_state.pop(pending_tab_key, None)
+    if pending_tab in tab_labels:
+        st.session_state[workflow_tab_key] = pending_tab
+    elif st.session_state.get(workflow_tab_key) not in tab_labels:
+        st.session_state[workflow_tab_key] = participants_tab_label
+
+    workflow_tabs = st.tabs(
+        tab_labels,
+        key=workflow_tab_key,
+        on_change="rerun",
+    )
+    participants_tab = workflow_tabs[0]
+    if len(workflow_tabs) == 3:
+        group_tab = workflow_tabs[1]
+        bracket_tab = workflow_tabs[2]
+    else:
+        group_tab = None
+        bracket_tab = workflow_tabs[1]
+
+    with participants_tab:
         st.subheader("Participants")
 
         if setup_locked:
@@ -733,12 +712,22 @@ def render_tournament_manager(
                     st.session_state[order_state_key] = list(
                         st.session_state[order_state_key]
                     )
+                    st.session_state[pending_tab_key] = (
+                        group_tab_label
+                        if draft["format_type"]
+                        == tournament_manager.FORMAT_GROUP_STAGE
+                        else bracket_tab_label
+                    )
                     st.success("Seeding order saved.")
                     st.rerun()
 
+        else:
+            st.info("No participants have been added yet.")
+
+    if draft["format_type"] == tournament_manager.FORMAT_GROUP_STAGE:
+        with group_tab:
             if (
-                draft["format_type"]
-                == tournament_manager.FORMAT_GROUP_STAGE
+                draft["participants"]
             ):
                 st.divider()
                 st.subheader("Group Stage")
@@ -1530,744 +1519,726 @@ def render_tournament_manager(
                         "to create a group."
                     )
 
-        else:
-            st.info("No participants have been added yet.")
+            else:
+                st.info("No participants have been added yet.")
 
-    else:
-        summary_cols = st.columns(3)
-        summary_cols[0].metric(
-            "Participants",
-            len(draft["participants"]),
-        )
-        summary_cols[1].metric(
-            "Groups",
-            len(draft_groups),
-        )
-        summary_cols[2].metric(
-            "Group Sets",
-            len(draft_group_matches),
-        )
-        st.caption(
-            "Setup and group-stage details are complete and collapsed. "
-            "Use the toggle above to review them."
-        )
+    with bracket_tab:
+        st.subheader("Double Elimination Bracket")
 
-    st.divider()
-    st.subheader("Double Elimination Bracket")
+        bracket_can_be_generated = True
 
-    bracket_can_be_generated = True
-
-    if len(draft["participants"]) < 3:
-        bracket_can_be_generated = False
-        st.warning(
-            "At least 3 participants are required to generate "
-            "a double-elimination bracket."
-        )
-
-    if (
-        draft["format_type"]
-        == tournament_manager.FORMAT_GROUP_STAGE
-    ):
-        if not draft_groups:
+        if len(draft["participants"]) < 3:
             bracket_can_be_generated = False
-            st.info(
-                "Create the tournament groups before generating "
-                "the bracket."
+            st.warning(
+                "At least 3 participants are required to generate "
+                "a double-elimination bracket."
             )
-        else:
-            global_ranking = (
-                load_tournament_draft_global_group_ranking(
-                    selected_draft_id,
-                )
-            )
-
-            if not global_ranking["complete"]:
-                bracket_can_be_generated = False
-                st.info(
-                    "Complete all group matches before generating "
-                    "the bracket."
-                )
-
-    if not bracket_generated:
-        if st.button(
-            "Generate Bracket",
-            type="primary",
-            key=f"generate_bracket_{selected_draft_id}",
-            disabled=not bracket_can_be_generated,
-        ):
-            try:
-                result = (
-                    tournament_manager.generate_draft_bracket(
-                        db_path,
-                        selected_draft_id,
-                    )
-                )
-            except ValueError as exc:
-                st.error(str(exc))
-            else:
-                st.cache_data.clear()
-                st.success(
-                    f"{result['bracket_size']}-player bracket "
-                    f"generated with "
-                    f"{result['matches_created']} matches."
-                )
-                st.rerun()
-
-    else:
-        bracket_metrics = st.columns(4)
-
-        bracket_metrics[0].metric(
-            "Matches",
-            draft_bracket_state["match_count"],
-        )
-        bracket_metrics[1].metric(
-            "Ready",
-            draft_bracket_state["pending_count"],
-        )
-        bracket_metrics[2].metric(
-            "Waiting",
-            draft_bracket_state["waiting_count"],
-        )
-        bracket_metrics[3].metric(
-            "Completed",
-            draft_bracket_state["completed_count"],
-        )
-
-        if draft_bracket_state["champion_name"]:
-            st.success(
-                f"Champion: "
-                f"{draft_bracket_state['champion_name']}"
-            )
-
-        if draft_bracket_state["champion_name"]:
-            st.markdown("### Finalize Tournament")
-
-            try:
-                finalization_preview = (
-                    load_tournament_draft_finalization_preview(
-                        selected_draft_id,
-                    )
-                )
-            except ValueError as exc:
-                st.warning(str(exc))
-            else:
-                finalization_cols = st.columns(4)
-
-                finalization_cols[0].metric(
-                    "Champion",
-                    finalization_preview["champion_name"],
-                )
-                finalization_cols[1].metric(
-                    "Participants",
-                    finalization_preview["participant_count"],
-                )
-                finalization_cols[2].metric(
-                    "Matches to Archive",
-                    finalization_preview["matches_to_archive"],
-                )
-                finalization_cols[3].metric(
-                    "Tournament",
-                    (
-                        f"WC "
-                        f"{finalization_preview['tournament_number']:02d}"
-                    ),
-                )
-
-                st.markdown("#### Final Placements")
-
-                placement_rows = [
-                    {
-                        "Placement": placement["placement"],
-                        "Player": placement["player"],
-                        "Seed": placement["seed"],
-                    }
-                    for placement
-                    in finalization_preview["placements"]
-                ]
-
-                st.dataframe(
-                    pd.DataFrame(placement_rows),
-                    hide_index=True,
-                    width="stretch",
-                    column_config={
-                        "Placement":
-                            st.column_config.NumberColumn(
-                                format="%d",
-                            ),
-                        "Seed":
-                            st.column_config.NumberColumn(
-                                format="%d",
-                            ),
-                    },
-                )
-
-                if (
-                    finalization_preview[
-                        "automatic_bracket_matches_omitted"
-                    ]
-                ):
-                    st.caption(
-                        f"{finalization_preview['automatic_bracket_matches_omitted']} "
-                        "automatic, cancelled, or inactive bracket matches "
-                        "will not be added to the archive."
-                    )
-
-                if (
-                    finalization_preview[
-                        "cancelled_group_matches_omitted"
-                    ]
-                ):
-                    st.caption(
-                        f"{finalization_preview['cancelled_group_matches_omitted']} "
-                        "cancelled group matches will not be added "
-                        "to the archive."
-                    )
-
-                st.warning(
-                    "Finalizing writes the tournament, participants, "
-                    "placements, and match results to the permanent archive. "
-                    "The draft can no longer be edited afterwards."
-                )
-
-                confirm_finalization = st.checkbox(
-                    (
-                        f"I confirm that WC "
-                        f"{finalization_preview['tournament_number']:02d} "
-                        "is complete and ready for the archive."
-                    ),
-                    key=(
-                        f"confirm_tournament_finalization_"
-                        f"{selected_draft_id}"
-                    ),
-                )
-
-                if st.button(
-                    "Finalize Tournament",
-                    type="primary",
-                    key=(
-                        f"finalize_tournament_"
-                        f"{selected_draft_id}"
-                    ),
-                    disabled=not confirm_finalization,
-                ):
-                    try:
-                        result = (
-                            tournament_manager
-                            .finalize_draft_tournament(
-                                db_path,
-                                selected_draft_id,
-                            )
-                        )
-                    except ValueError as exc:
-                        st.error(str(exc))
-                    except Exception as exc:
-                        st.error(
-                            "The tournament could not be finalized: "
-                            f"{exc}"
-                        )
-                    else:
-                        st.cache_data.clear()
-                        st.success(
-                            f"WC {result['tournament_number']:02d} "
-                            f"was archived successfully. "
-                            f"{result['matches_archived']} matches "
-                            "were added."
-                        )
-                        st.rerun()
-
-        bracket_matches = draft_bracket_state["matches"]
-
-        visible_match_codes = {
-            str(match["match_code"])
-            for match in bracket_matches
-            if match["status"] != "inactive"
-        }
-
-        dialog_state_key = (
-            f"open_bracket_match_code_"
-            f"{selected_draft_id}"
-        )
-
-        open_match_code = st.session_state.get(
-            dialog_state_key
-        )
-
-        if open_match_code not in visible_match_codes:
-            open_match_code = None
-            st.session_state.pop(
-                dialog_state_key,
-                None,
-            )
-
-        st.markdown("### Bracket View")
-
-        clicked_match_code = (
-            bracket_visualization.render_bracket(
-                bracket_matches,
-                draft_bracket_state["routes"],
-                selected_match_code=open_match_code,
-                component_key=(
-                    f"bracket_component_"
-                    f"{selected_draft_id}"
-                ),
-            )
-        )
 
         if (
-            clicked_match_code
-            and clicked_match_code in visible_match_codes
-            and clicked_match_code != open_match_code
+            draft["format_type"]
+            == tournament_manager.FORMAT_GROUP_STAGE
         ):
-            st.session_state[
-                dialog_state_key
-            ] = clicked_match_code
-
-            st.rerun()
-
-        if open_match_code:
-            selected_dialog_match = next(
-                (
-                    match
-                    for match in bracket_matches
-                    if str(match["match_code"])
-                    == str(open_match_code)
-                ),
-                None,
-            )
-
-            if selected_dialog_match is not None:
-                show_bracket_match_dialog(
-                    selected_dialog_match,
-                    dialog_state_key,
+            if not draft_groups:
+                bracket_can_be_generated = False
+                st.info(
+                    "Create the tournament groups before generating "
+                    "the bracket."
                 )
             else:
+                global_ranking = (
+                    load_tournament_draft_global_group_ranking(
+                        selected_draft_id,
+                    )
+                )
+
+                if not global_ranking["complete"]:
+                    bracket_can_be_generated = False
+                    st.info(
+                        "Complete all group matches before generating "
+                        "the bracket."
+                    )
+
+        if not bracket_generated:
+            if st.button(
+                "Generate Bracket",
+                type="primary",
+                key=f"generate_bracket_{selected_draft_id}",
+                disabled=not bracket_can_be_generated,
+            ):
+                try:
+                    result = (
+                        tournament_manager.generate_draft_bracket(
+                            db_path,
+                            selected_draft_id,
+                        )
+                    )
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    st.cache_data.clear()
+                    st.session_state[pending_tab_key] = bracket_tab_label
+                    st.success(
+                        f"{result['bracket_size']}-player bracket "
+                        f"generated with "
+                        f"{result['matches_created']} matches."
+                    )
+                    st.rerun()
+
+        else:
+            bracket_metrics = st.columns(4)
+
+            bracket_metrics[0].metric(
+                "Matches",
+                draft_bracket_state["match_count"],
+            )
+            bracket_metrics[1].metric(
+                "Ready",
+                draft_bracket_state["pending_count"],
+            )
+            bracket_metrics[2].metric(
+                "Waiting",
+                draft_bracket_state["waiting_count"],
+            )
+            bracket_metrics[3].metric(
+                "Completed",
+                draft_bracket_state["completed_count"],
+            )
+
+            if draft_bracket_state["champion_name"]:
+                st.success(
+                    f"Champion: "
+                    f"{draft_bracket_state['champion_name']}"
+                )
+
+            if draft_bracket_state["champion_name"]:
+                st.markdown("### Finalize Tournament")
+
+                try:
+                    finalization_preview = (
+                        load_tournament_draft_finalization_preview(
+                            selected_draft_id,
+                        )
+                    )
+                except ValueError as exc:
+                    st.warning(str(exc))
+                else:
+                    finalization_cols = st.columns(4)
+
+                    finalization_cols[0].metric(
+                        "Champion",
+                        finalization_preview["champion_name"],
+                    )
+                    finalization_cols[1].metric(
+                        "Participants",
+                        finalization_preview["participant_count"],
+                    )
+                    finalization_cols[2].metric(
+                        "Matches to Archive",
+                        finalization_preview["matches_to_archive"],
+                    )
+                    finalization_cols[3].metric(
+                        "Tournament",
+                        (
+                            f"WC "
+                            f"{finalization_preview['tournament_number']:02d}"
+                        ),
+                    )
+
+                    st.markdown("#### Final Placements")
+
+                    placement_rows = [
+                        {
+                            "Placement": placement["placement"],
+                            "Player": placement["player"],
+                            "Seed": placement["seed"],
+                        }
+                        for placement
+                        in finalization_preview["placements"]
+                    ]
+
+                    st.dataframe(
+                        pd.DataFrame(placement_rows),
+                        hide_index=True,
+                        width="stretch",
+                        column_config={
+                            "Placement":
+                                st.column_config.NumberColumn(
+                                    format="%d",
+                                ),
+                            "Seed":
+                                st.column_config.NumberColumn(
+                                    format="%d",
+                                ),
+                        },
+                    )
+
+                    if (
+                        finalization_preview[
+                            "automatic_bracket_matches_omitted"
+                        ]
+                    ):
+                        st.caption(
+                            f"{finalization_preview['automatic_bracket_matches_omitted']} "
+                            "automatic, cancelled, or inactive bracket matches "
+                            "will not be added to the archive."
+                        )
+
+                    if (
+                        finalization_preview[
+                            "cancelled_group_matches_omitted"
+                        ]
+                    ):
+                        st.caption(
+                            f"{finalization_preview['cancelled_group_matches_omitted']} "
+                            "cancelled group matches will not be added "
+                            "to the archive."
+                        )
+
+                    st.warning(
+                        "Finalizing writes the tournament, participants, "
+                        "placements, and match results to the permanent archive. "
+                        "The draft can no longer be edited afterwards."
+                    )
+
+                    confirm_finalization = st.checkbox(
+                        (
+                            f"I confirm that WC "
+                            f"{finalization_preview['tournament_number']:02d} "
+                            "is complete and ready for the archive."
+                        ),
+                        key=(
+                            f"confirm_tournament_finalization_"
+                            f"{selected_draft_id}"
+                        ),
+                    )
+
+                    if st.button(
+                        "Finalize Tournament",
+                        type="primary",
+                        key=(
+                            f"finalize_tournament_"
+                            f"{selected_draft_id}"
+                        ),
+                        disabled=not confirm_finalization,
+                    ):
+                        try:
+                            result = (
+                                tournament_manager
+                                .finalize_draft_tournament(
+                                    db_path,
+                                    selected_draft_id,
+                                )
+                            )
+                        except ValueError as exc:
+                            st.error(str(exc))
+                        except Exception as exc:
+                            st.error(
+                                "The tournament could not be finalized: "
+                                f"{exc}"
+                            )
+                        else:
+                            st.cache_data.clear()
+                            st.success(
+                                f"WC {result['tournament_number']:02d} "
+                                f"was archived successfully. "
+                                f"{result['matches_archived']} matches "
+                                "were added."
+                            )
+                            st.rerun()
+
+            bracket_matches = draft_bracket_state["matches"]
+
+            visible_match_codes = {
+                str(match["match_code"])
+                for match in bracket_matches
+                if match["status"] != "inactive"
+            }
+
+            dialog_state_key = (
+                f"open_bracket_match_code_"
+                f"{selected_draft_id}"
+            )
+
+            open_match_code = st.session_state.get(
+                dialog_state_key
+            )
+
+            if open_match_code not in visible_match_codes:
+                open_match_code = None
                 st.session_state.pop(
                     dialog_state_key,
                     None,
                 )
 
-        st.markdown("### Match Management")
+            st.markdown("### Bracket View")
 
-        visible_bracket_matches = [
-            match
-            for match in bracket_matches
-            if match["status"] != "inactive"
-        ]
-
-        matches_by_side: dict[
-            str,
-            list[dict[str, Any]],
-        ] = {
-            "winners": [],
-            "losers": [],
-            "finals": [],
-        }
-
-        for match in visible_bracket_matches:
-            bracket_side = str(match["bracket_side"])
-
-            matches_by_side.setdefault(
-                bracket_side,
-                [],
-            ).append(match)
-
-        side_labels = {
-            "winners": "Winners Bracket",
-            "losers": "Losers Bracket",
-            "finals": "Finals",
-        }
-
-        for bracket_side in (
-            "winners",
-            "losers",
-            "finals",
-        ):
-            side_matches = matches_by_side.get(
-                bracket_side,
-                [],
+            clicked_match_code = (
+                bracket_visualization.render_bracket(
+                    bracket_matches,
+                    draft_bracket_state["routes"],
+                    selected_match_code=open_match_code,
+                    component_key=(
+                        f"bracket_component_"
+                        f"{selected_draft_id}"
+                    ),
+                )
             )
 
-            if not side_matches:
-                continue
+            if (
+                clicked_match_code
+                and clicked_match_code in visible_match_codes
+                and clicked_match_code != open_match_code
+            ):
+                st.session_state[
+                    dialog_state_key
+                ] = clicked_match_code
 
-            st.markdown(
-                f"### {side_labels[bracket_side]}"
-            )
+                st.rerun()
 
-            matches_by_round: dict[
-                tuple[int, str],
-                list[dict[str, Any]],
-            ] = {}
-
-            for match in side_matches:
-                round_key = (
-                    int(match["round_number"]),
-                    str(match["round_label"]),
+            if open_match_code:
+                selected_dialog_match = next(
+                    (
+                        match
+                        for match in bracket_matches
+                        if str(match["match_code"])
+                        == str(open_match_code)
+                    ),
+                    None,
                 )
 
-                matches_by_round.setdefault(
-                    round_key,
+                if selected_dialog_match is not None:
+                    show_bracket_match_dialog(
+                        selected_dialog_match,
+                        dialog_state_key,
+                    )
+                else:
+                    st.session_state.pop(
+                        dialog_state_key,
+                        None,
+                    )
+
+            st.markdown("### Match Management")
+
+            visible_bracket_matches = [
+                match
+                for match in bracket_matches
+                if match["status"] != "inactive"
+            ]
+
+            matches_by_side: dict[
+                str,
+                list[dict[str, Any]],
+            ] = {
+                "winners": [],
+                "losers": [],
+                "finals": [],
+            }
+
+            for match in visible_bracket_matches:
+                bracket_side = str(match["bracket_side"])
+
+                matches_by_side.setdefault(
+                    bracket_side,
                     [],
                 ).append(match)
 
-            for (
-                round_number,
-                round_label,
-            ), round_matches in matches_by_round.items():
-                st.markdown(f"#### {round_label}")
+            side_labels = {
+                "winners": "Winners Bracket",
+                "losers": "Losers Bracket",
+                "finals": "Finals",
+            }
 
-                for match in round_matches:
-                    player_1_name = (
-                        str(match["player_1_name"])
-                        if match["player_1_name"]
-                        else "TBD"
+            for bracket_side in (
+                "winners",
+                "losers",
+                "finals",
+            ):
+                side_matches = matches_by_side.get(
+                    bracket_side,
+                    [],
+                )
+
+                if not side_matches:
+                    continue
+
+                st.markdown(
+                    f"### {side_labels[bracket_side]}"
+                )
+
+                matches_by_round: dict[
+                    tuple[int, str],
+                    list[dict[str, Any]],
+                ] = {}
+
+                for match in side_matches:
+                    round_key = (
+                        int(match["round_number"]),
+                        str(match["round_label"]),
                     )
 
-                    player_2_name = (
-                        str(match["player_2_name"])
-                        if match["player_2_name"]
-                        else "TBD"
-                    )
+                    matches_by_round.setdefault(
+                        round_key,
+                        [],
+                    ).append(match)
 
-                    match_status = str(match["status"])
+                for (
+                    round_number,
+                    round_label,
+                ), round_matches in matches_by_round.items():
+                    st.markdown(f"#### {round_label}")
 
-                    status_display = {
-                        "waiting": "Waiting",
-                        "pending": "Ready",
-                        "completed": "Played",
-                        "forfeit": "W–L",
-                        "bye": "Bye",
-                        "cancelled": "Cancelled",
-                    }.get(
-                        match_status,
-                        match_status.title(),
-                    )
-
-                    if (
-                        match_status == "completed"
-                        and match["player_1_score"] is not None
-                        and match["player_2_score"] is not None
-                    ):
-                        result_display = (
-                            f"{match['player_1_score']}"
-                            f"–"
-                            f"{match['player_2_score']}"
+                    for match in round_matches:
+                        player_1_name = (
+                            str(match["player_1_name"])
+                            if match["player_1_name"]
+                            else "TBD"
                         )
 
-                    elif match_status == "forfeit":
-                        result_display = "W–L"
-
-                    elif match_status == "bye":
-                        result_display = "Bye"
-
-                    else:
-                        result_display = status_display
-
-                    match_label = (
-                        f"{match['match_code']} · "
-                        f"{player_1_name} vs {player_2_name} · "
-                        f"{result_display}"
-                    )
-
-                    with st.expander(
-                        match_label,
-                        expanded=False,
-                    ):
-                        st.markdown(
-                            (
-                                '<div style="'
-                                'display:grid;'
-                                'grid-template-columns:1fr auto 1fr;'
-                                'align-items:center;'
-                                'gap:1rem;'
-                                'margin:0.25rem 0 1rem 0;'
-                                '">'
-                                '<div style="'
-                                'text-align:right;'
-                                'font-size:1.5rem;'
-                                'font-weight:750;'
-                                '">'
-                                f'{html.escape(player_1_name)}'
-                                '</div>'
-                                '<div style="'
-                                'opacity:0.55;'
-                                'font-size:0.9rem;'
-                                'font-weight:700;'
-                                '">'
-                                'VS'
-                                '</div>'
-                                '<div style="'
-                                'text-align:left;'
-                                'font-size:1.5rem;'
-                                'font-weight:750;'
-                                '">'
-                                f'{html.escape(player_2_name)}'
-                                '</div>'
-                                '</div>'
-                            ),
-                            unsafe_allow_html=True,
+                        player_2_name = (
+                            str(match["player_2_name"])
+                            if match["player_2_name"]
+                            else "TBD"
                         )
 
-                        summary_parts = [
-                            f"**Status:** {status_display}",
-                        ]
+                        match_status = str(match["status"])
 
-                        if (
-                            match["winner_name"]
-                            is not None
-                        ):
-                            summary_parts.append(
-                                f"**Winner:** "
-                                f"{match['winner_name']}"
-                            )
+                        status_display = {
+                            "waiting": "Waiting",
+                            "pending": "Ready",
+                            "completed": "Played",
+                            "forfeit": "W–L",
+                            "bye": "Bye",
+                            "cancelled": "Cancelled",
+                        }.get(
+                            match_status,
+                            match_status.title(),
+                        )
 
                         if (
                             match_status == "completed"
-                            and match["player_1_score"]
-                            is not None
-                            and match["player_2_score"]
-                            is not None
+                            and match["player_1_score"] is not None
+                            and match["player_2_score"] is not None
                         ):
-                            summary_parts.append(
-                                f"**Result:** "
-                                f"{match['player_1_score']}–"
+                            result_display = (
+                                f"{match['player_1_score']}"
+                                f"–"
                                 f"{match['player_2_score']}"
                             )
 
-                        st.caption(
-                            " · ".join(summary_parts)
-                        )
-
-                        if match_status == "waiting":
-                            st.info(
-                                "This match is waiting for players "
-                                "from earlier rounds."
-                            )
+                        elif match_status == "forfeit":
+                            result_display = "W–L"
 
                         elif match_status == "bye":
-                            st.info(
-                                f"{match['winner_name']} advances "
-                                "automatically."
-                            )
+                            result_display = "Bye"
 
-                        elif match_status == "cancelled":
-                            st.info(
-                                "This match has been cancelled."
-                            )
+                        else:
+                            result_display = status_display
 
-                        elif match_status == "pending":
-                            result_type = st.radio(
-                                "Result type",
-                                options=[
-                                    "Played",
-                                    "W–L",
-                                    "Cancelled",
-                                ],
-                                horizontal=True,
-                                key=(
-                                    f"bracket_result_type_"
-                                    f"{match['bracket_match_id']}"
+                        match_label = (
+                            f"{match['match_code']} · "
+                            f"{player_1_name} vs {player_2_name} · "
+                            f"{result_display}"
+                        )
+
+                        with st.expander(
+                            match_label,
+                            expanded=False,
+                        ):
+                            st.markdown(
+                                (
+                                    '<div style="'
+                                    'display:grid;'
+                                    'grid-template-columns:1fr auto 1fr;'
+                                    'align-items:center;'
+                                    'gap:1rem;'
+                                    'margin:0.25rem 0 1rem 0;'
+                                    '">'
+                                    '<div style="'
+                                    'text-align:right;'
+                                    'font-size:1.5rem;'
+                                    'font-weight:750;'
+                                    '">'
+                                    f'{html.escape(player_1_name)}'
+                                    '</div>'
+                                    '<div style="'
+                                    'opacity:0.55;'
+                                    'font-size:0.9rem;'
+                                    'font-weight:700;'
+                                    '">'
+                                    'VS'
+                                    '</div>'
+                                    '<div style="'
+                                    'text-align:left;'
+                                    'font-size:1.5rem;'
+                                    'font-weight:750;'
+                                    '">'
+                                    f'{html.escape(player_2_name)}'
+                                    '</div>'
+                                    '</div>'
                                 ),
+                                unsafe_allow_html=True,
                             )
 
-                            with st.form(
-                                f"edit_bracket_match_"
-                                f"{match['bracket_match_id']}"
+                            summary_parts = [
+                                f"**Status:** {status_display}",
+                            ]
+
+                            if (
+                                match["winner_name"]
+                                is not None
                             ):
-                                winner_id = None
-                                player_1_score = None
-                                player_2_score = None
-
-                                if result_type == "Played":
-                                    score_cols = st.columns(2)
-
-                                    with score_cols[0]:
-                                        player_1_score = (
-                                            st.number_input(
-                                                f"{player_1_name} score",
-                                                min_value=0,
-                                                value=0,
-                                                step=1,
-                                                key=(
-                                                    f"bracket_p1_score_"
-                                                    f"{match['bracket_match_id']}"
-                                                ),
-                                            )
-                                        )
-
-                                    with score_cols[1]:
-                                        player_2_score = (
-                                            st.number_input(
-                                                f"{player_2_name} score",
-                                                min_value=0,
-                                                value=0,
-                                                step=1,
-                                                key=(
-                                                    f"bracket_p2_score_"
-                                                    f"{match['bracket_match_id']}"
-                                                ),
-                                            )
-                                        )
-
-                                elif result_type == "W–L":
-                                    winner_options = {
-                                        player_1_name: str(
-                                            match["player_1_id"]
-                                        ),
-                                        player_2_name: str(
-                                            match["player_2_id"]
-                                        ),
-                                    }
-
-                                    selected_winner_name = (
-                                        st.selectbox(
-                                            "Winner",
-                                            options=list(
-                                                winner_options
-                                            ),
-                                            key=(
-                                                f"bracket_winner_"
-                                                f"{match['bracket_match_id']}"
-                                            ),
-                                        )
-                                    )
-
-                                    winner_id = winner_options[
-                                        selected_winner_name
-                                    ]
-
-                                save_bracket_result = (
-                                    st.form_submit_button(
-                                        "Save Result",
-                                        type="primary",
-                                    )
+                                summary_parts.append(
+                                    f"**Winner:** "
+                                    f"{match['winner_name']}"
                                 )
 
-                            if save_bracket_result:
-                                if result_type == "Played":
-                                    result_status = "completed"
-
-                                elif result_type == "W–L":
-                                    result_status = "forfeit"
-
-                                else:
-                                    result_status = "cancelled"
-
-                                try:
-                                    tournament_manager.update_draft_bracket_match(
-                                        db_path,
-                                        str(
-                                            match[
-                                                "bracket_match_id"
-                                            ]
-                                        ),
-                                        status=result_status,
-                                        winner_id=winner_id,
-                                        player_1_score=(
-                                            int(player_1_score)
-                                            if player_1_score
-                                            is not None
-                                            else None
-                                        ),
-                                        player_2_score=(
-                                            int(player_2_score)
-                                            if player_2_score
-                                            is not None
-                                            else None
-                                        ),
-                                    )
-                                except ValueError as exc:
-                                    st.error(str(exc))
-                                else:
-                                    st.cache_data.clear()
-                                    st.success(
-                                        "Bracket result saved."
-                                    )
-                                    st.rerun()
-
-                        elif match_status in {
-                            "completed",
-                            "forfeit",
-                            "cancelled",
-                        }:
-                            st.warning(
-                                "Resetting this result also clears all "
-                                "dependent later bracket matches."
-                            )
-
-                            confirm_result_reset = st.checkbox(
-                                "I understand that dependent bracket "
-                                "results will be cleared.",
-                                key=(
-                                    f"confirm_bracket_match_reset_"
-                                    f"{match['bracket_match_id']}"
-                                ),
-                            )
-
-                            if st.button(
-                                "Reset Result",
-                                type="secondary",
-                                key=(
-                                    f"reset_bracket_match_"
-                                    f"{match['bracket_match_id']}"
-                                ),
-                                disabled=not confirm_result_reset,
+                            if (
+                                match_status == "completed"
+                                and match["player_1_score"]
+                                is not None
+                                and match["player_2_score"]
+                                is not None
                             ):
-                                try:
-                                    result = (
-                                        tournament_manager
-                                        .reset_draft_bracket_match_result(
+                                summary_parts.append(
+                                    f"**Result:** "
+                                    f"{match['player_1_score']}–"
+                                    f"{match['player_2_score']}"
+                                )
+
+                            st.caption(
+                                " · ".join(summary_parts)
+                            )
+
+                            if match_status == "waiting":
+                                st.info(
+                                    "This match is waiting for players "
+                                    "from earlier rounds."
+                                )
+
+                            elif match_status == "bye":
+                                st.info(
+                                    f"{match['winner_name']} advances "
+                                    "automatically."
+                                )
+
+                            elif match_status == "cancelled":
+                                st.info(
+                                    "This match has been cancelled."
+                                )
+
+                            elif match_status == "pending":
+                                result_type = st.radio(
+                                    "Result type",
+                                    options=[
+                                        "Played",
+                                        "W–L",
+                                        "Cancelled",
+                                    ],
+                                    horizontal=True,
+                                    key=(
+                                        f"bracket_result_type_"
+                                        f"{match['bracket_match_id']}"
+                                    ),
+                                )
+
+                                with st.form(
+                                    f"edit_bracket_match_"
+                                    f"{match['bracket_match_id']}"
+                                ):
+                                    winner_id = None
+                                    player_1_score = None
+                                    player_2_score = None
+
+                                    if result_type == "Played":
+                                        score_cols = st.columns(2)
+
+                                        with score_cols[0]:
+                                            player_1_score = (
+                                                st.number_input(
+                                                    f"{player_1_name} score",
+                                                    min_value=0,
+                                                    value=0,
+                                                    step=1,
+                                                    key=(
+                                                        f"bracket_p1_score_"
+                                                        f"{match['bracket_match_id']}"
+                                                    ),
+                                                )
+                                            )
+
+                                        with score_cols[1]:
+                                            player_2_score = (
+                                                st.number_input(
+                                                    f"{player_2_name} score",
+                                                    min_value=0,
+                                                    value=0,
+                                                    step=1,
+                                                    key=(
+                                                        f"bracket_p2_score_"
+                                                        f"{match['bracket_match_id']}"
+                                                    ),
+                                                )
+                                            )
+
+                                    elif result_type == "W–L":
+                                        winner_options = {
+                                            player_1_name: str(
+                                                match["player_1_id"]
+                                            ),
+                                            player_2_name: str(
+                                                match["player_2_id"]
+                                            ),
+                                        }
+
+                                        selected_winner_name = (
+                                            st.selectbox(
+                                                "Winner",
+                                                options=list(
+                                                    winner_options
+                                                ),
+                                                key=(
+                                                    f"bracket_winner_"
+                                                    f"{match['bracket_match_id']}"
+                                                ),
+                                            )
+                                        )
+
+                                        winner_id = winner_options[
+                                            selected_winner_name
+                                        ]
+
+                                    save_bracket_result = (
+                                        st.form_submit_button(
+                                            "Save Result",
+                                            type="primary",
+                                        )
+                                    )
+
+                                if save_bracket_result:
+                                    if result_type == "Played":
+                                        result_status = "completed"
+
+                                    elif result_type == "W–L":
+                                        result_status = "forfeit"
+
+                                    else:
+                                        result_status = "cancelled"
+
+                                    try:
+                                        tournament_manager.update_draft_bracket_match(
                                             db_path,
                                             str(
                                                 match[
                                                     "bracket_match_id"
                                                 ]
                                             ),
+                                            status=result_status,
+                                            winner_id=winner_id,
+                                            player_1_score=(
+                                                int(player_1_score)
+                                                if player_1_score
+                                                is not None
+                                                else None
+                                            ),
+                                            player_2_score=(
+                                                int(player_2_score)
+                                                if player_2_score
+                                                is not None
+                                                else None
+                                            ),
                                         )
-                                    )
-                                except ValueError as exc:
-                                    st.error(str(exc))
-                                else:
-                                    st.cache_data.clear()
-                                    st.success(
-                                        f"{result['match_code']} reset. "
-                                        f"{result['matches_cleared']} "
-                                        "dependent matches were cleared."
-                                    )
-                                    st.rerun()
+                                    except ValueError as exc:
+                                        st.error(str(exc))
+                                    else:
+                                        st.cache_data.clear()
+                                        st.success(
+                                            "Bracket result saved."
+                                        )
+                                        st.rerun()
 
-        st.warning(
-            "Resetting the bracket deletes all bracket matches "
-            "and results. Group-stage results are preserved."
-        )
+                            elif match_status in {
+                                "completed",
+                                "forfeit",
+                                "cancelled",
+                            }:
+                                st.warning(
+                                    "Resetting this result also clears all "
+                                    "dependent later bracket matches."
+                                )
 
-        confirm_bracket_reset = st.checkbox(
-            "I understand that all bracket results will be deleted.",
-            key=f"confirm_bracket_reset_{selected_draft_id}",
-        )
+                                confirm_result_reset = st.checkbox(
+                                    "I understand that dependent bracket "
+                                    "results will be cleared.",
+                                    key=(
+                                        f"confirm_bracket_match_reset_"
+                                        f"{match['bracket_match_id']}"
+                                    ),
+                                )
 
-        if st.button(
-            "Reset Bracket",
-            type="secondary",
-            key=f"reset_bracket_{selected_draft_id}",
-            disabled=not confirm_bracket_reset,
-        ):
-            try:
-                result = tournament_manager.reset_draft_bracket(
-                    db_path,
-                    selected_draft_id,
-                )
-            except ValueError as exc:
-                st.error(str(exc))
-            else:
-                st.cache_data.clear()
-                st.success(
-                    f"Bracket reset: "
-                    f"{result['matches_deleted']} matches deleted."
-                )
-                st.rerun()
+                                if st.button(
+                                    "Reset Result",
+                                    type="secondary",
+                                    key=(
+                                        f"reset_bracket_match_"
+                                        f"{match['bracket_match_id']}"
+                                    ),
+                                    disabled=not confirm_result_reset,
+                                ):
+                                    try:
+                                        result = (
+                                            tournament_manager
+                                            .reset_draft_bracket_match_result(
+                                                db_path,
+                                                str(
+                                                    match[
+                                                        "bracket_match_id"
+                                                    ]
+                                                ),
+                                            )
+                                        )
+                                    except ValueError as exc:
+                                        st.error(str(exc))
+                                    else:
+                                        st.cache_data.clear()
+                                        st.success(
+                                            f"{result['match_code']} reset. "
+                                            f"{result['matches_cleared']} "
+                                            "dependent matches were cleared."
+                                        )
+                                        st.rerun()
 
-    st.divider()
+            st.warning(
+                "Resetting the bracket deletes all bracket matches "
+                "and results. Group-stage results are preserved."
+            )
+
+            confirm_bracket_reset = st.checkbox(
+                "I understand that all bracket results will be deleted.",
+                key=f"confirm_bracket_reset_{selected_draft_id}",
+            )
+
+            if st.button(
+                "Reset Bracket",
+                type="secondary",
+                key=f"reset_bracket_{selected_draft_id}",
+                disabled=not confirm_bracket_reset,
+            ):
+                try:
+                    result = tournament_manager.reset_draft_bracket(
+                        db_path,
+                        selected_draft_id,
+                    )
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    st.cache_data.clear()
+                    st.success(
+                        f"Bracket reset: "
+                        f"{result['matches_deleted']} matches deleted."
+                    )
+                    st.rerun()
+
+        st.divider()
     with st.container(border=True):
         st.subheader("Danger Zone")
         st.caption(
