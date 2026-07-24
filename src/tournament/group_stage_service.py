@@ -822,6 +822,21 @@ def reset_draft_group_matches(
                 "the tournament is still a draft."
             )
 
+        bracket_exists = connection.execute(
+            """
+            SELECT 1
+            FROM tournament_draft_bracket_matches
+            WHERE draft_id = ?
+            LIMIT 1
+            """,
+            (draft_id,),
+        ).fetchone()
+
+        if bracket_exists is not None:
+            raise ValueError(
+                "Reset the bracket before resetting the group matches."
+            )
+
         connection.execute(
             """
             DELETE FROM tournament_draft_group_matches
@@ -900,6 +915,21 @@ def update_draft_group_match(
             raise ValueError(
                 "Group-match results can only be changed while "
                 "the tournament is still a draft."
+            )
+
+        bracket_exists = connection.execute(
+            """
+            SELECT 1
+            FROM tournament_draft_bracket_matches
+            WHERE draft_id = ?
+            LIMIT 1
+            """,
+            (match["draft_id"],),
+        ).fetchone()
+
+        if bracket_exists is not None:
+            raise ValueError(
+                "Reset the bracket before changing group-match results."
             )
 
         player_1_id = str(match["player_1_id"])

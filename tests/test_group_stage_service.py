@@ -74,6 +74,10 @@ class GroupStageServiceTests(unittest.TestCase):
                 PROJECT_ROOT
                 / "src"
                 / "migrations"
+                / "004_add_double_elimination_bracket.sql",
+                PROJECT_ROOT
+                / "src"
+                / "migrations"
                 / "005_add_match_archive_metadata.sql",
             ):
                 connection.executescript(sql_path.read_text())
@@ -297,6 +301,81 @@ class GroupStageServiceTests(unittest.TestCase):
             ),
             [],
         )
+
+    def test_group_matches_cannot_reset_after_bracket_generation(
+        self,
+    ) -> None:
+        tournament.create_draft_groups(
+            self.db_path,
+            "draft",
+            2,
+        )
+        tournament.create_draft_group_matches(
+            self.db_path,
+            "draft",
+        )
+
+        with tournament.connect_db(self.db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO tournament_draft_bracket_matches (
+                    bracket_match_id,
+                    draft_id,
+                    match_code,
+                    bracket_side,
+                    round_number,
+                    match_number,
+                    round_label,
+                    match_type,
+                    status
+                )
+                VALUES (
+                    'bracket-match',
+                    'draft',
+                    'W1M1',
+                    'winners',
+                    1,
+                    1,
+                    'Winners Round 1',
+                    'standard',
+                    'waiting'
+                )
+                """
+            )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Reset the bracket before",
+        ):
+            tournament.reset_draft_group_matches(
+                self.db_path,
+                "draft",
+            )
+
+        self.assertNotEqual(
+            tournament.get_draft_group_matches(
+                self.db_path,
+                "draft",
+            ),
+            [],
+        )
+
+        group_match = tournament.get_draft_group_matches(
+            self.db_path,
+            "draft",
+        )[0]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Reset the bracket before",
+        ):
+            tournament.update_draft_group_match(
+                self.db_path,
+                group_match["group_match_id"],
+                status="completed",
+                player_1_score=2,
+                player_2_score=0,
+            )
 
 
 if __name__ == "__main__":

@@ -1541,6 +1541,7 @@ def render_tournament_manager(
                                                     current_status_label
                                                 ),
                                                 key=status_key,
+                                                disabled=bracket_generated,
                                             )
 
                                             selected_status = status_by_label[
@@ -1574,6 +1575,7 @@ def render_tournament_manager(
                                                                 f"group_match_p1_score_"
                                                                 f"{match['group_match_id']}"
                                                             ),
+                                                            disabled=bracket_generated,
                                                         )
 
                                                     with score_cols[1]:
@@ -1590,6 +1592,7 @@ def render_tournament_manager(
                                                                 f"group_match_p2_score_"
                                                                 f"{match['group_match_id']}"
                                                             ),
+                                                            disabled=bracket_generated,
                                                         )
 
                                                 elif (
@@ -1625,6 +1628,7 @@ def render_tournament_manager(
                                                             f"group_match_winner_"
                                                             f"{match['group_match_id']}"
                                                         ),
+                                                        disabled=bracket_generated,
                                                     )
 
                                                     winner_id = winner_options[
@@ -1634,6 +1638,7 @@ def render_tournament_manager(
                                                 save_result = st.form_submit_button(
                                                     "Save Result",
                                                     type="primary",
+                                                    disabled=bracket_generated,
                                                 )
 
                                             if save_result:
@@ -1679,6 +1684,14 @@ def render_tournament_manager(
                                                     )
                                                     st.rerun()
 
+                            if bracket_generated:
+                                st.info(
+                                    "The group stage is locked because the "
+                                    "bracket has already been generated. "
+                                    "Reset the bracket first if you need to "
+                                    "reset the group matches."
+                                )
+
                             if st.button(
                                 "Reset Group Matches",
                                 type="secondary",
@@ -1686,6 +1699,7 @@ def render_tournament_manager(
                                     f"reset_group_matches_"
                                     f"{selected_draft_id}"
                                 ),
+                                disabled=bracket_generated,
                             ):
                                 try:
                                     tournament_manager.reset_draft_group_matches(
