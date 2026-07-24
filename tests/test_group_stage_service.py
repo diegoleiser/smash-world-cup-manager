@@ -71,17 +71,12 @@ class GroupStageServiceTests(unittest.TestCase):
                 / "src"
                 / "migrations"
                 / "003_add_group_stage_matches.sql",
+                PROJECT_ROOT
+                / "src"
+                / "migrations"
+                / "005_add_match_archive_metadata.sql",
             ):
                 connection.executescript(sql_path.read_text())
-
-            connection.executescript(
-                """
-                ALTER TABLE matches ADD COLUMN stage TEXT;
-                ALTER TABLE matches
-                    ADD COLUMN suggested_play_order INTEGER;
-                ALTER TABLE matches ADD COLUMN completed_at TEXT;
-                """
-            )
 
             connection.execute(
                 """

@@ -43,19 +43,12 @@ class TournamentFinalizationTests(unittest.TestCase):
                 / "src"
                 / "migrations"
                 / "004_add_double_elimination_bracket.sql",
+                PROJECT_ROOT
+                / "src"
+                / "migrations"
+                / "005_add_match_archive_metadata.sql",
             ):
                 connection.executescript(sql_path.read_text())
-
-            # These archive columns exist in the production database but are
-            # not yet represented by a checked-in migration.
-            connection.executescript(
-                """
-                ALTER TABLE matches ADD COLUMN stage TEXT;
-                ALTER TABLE matches
-                    ADD COLUMN suggested_play_order INTEGER;
-                ALTER TABLE matches ADD COLUMN completed_at TEXT;
-                """
-            )
 
             for player_id, display_name in (
                 ("a", "Alpha"),

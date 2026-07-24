@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = ROOT / "data" / "smash_wm.db"
 DEFAULT_SCHEMA_PATH = ROOT / "src" / "schema.sql"
 DEFAULT_SEED_PATH = ROOT / "data" / "private_seed.json"
+DEFAULT_MIGRATIONS_DIR = ROOT / "src" / "migrations"
 
 
 def normalize_alias(value: str) -> str:
@@ -43,6 +44,7 @@ def initialize_database(
     seed_path: Path,
     *,
     replace: bool = False,
+    migrations_dir: Path = DEFAULT_MIGRATIONS_DIR,
 ) -> None:
     if db_path.exists():
         if not replace:
@@ -54,6 +56,10 @@ def initialize_database(
 
     if not schema_path.exists():
         raise FileNotFoundError(f"Schema file not found: {schema_path}")
+    if not migrations_dir.is_dir():
+        raise FileNotFoundError(
+            f"Migrations directory not found: {migrations_dir}"
+        )
 
     seed = load_seed_data(seed_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -92,6 +98,10 @@ def initialize_database(
     with sqlite3.connect(db_path) as connection:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.executescript(schema_path.read_text(encoding="utf-8"))
+        for migration_path in sorted(migrations_dir.glob("*.sql")):
+            connection.executescript(
+                migration_path.read_text(encoding="utf-8")
+            )
         connection.executemany(
             """
             INSERT INTO players(
