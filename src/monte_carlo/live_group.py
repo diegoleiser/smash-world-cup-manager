@@ -326,6 +326,15 @@ def forecast_live_group(
         current_by_player_id,
         winners_count,
     )
+    if not pending_matches:
+        statuses = {
+            player.player_id: (
+                WINNERS_LOCKED
+                if winners_counts[player.player_id] == n_simulations
+                else LOSERS_LOCKED
+            )
+            for player in players
+        }
     forecasts = tuple(
         LiveGroupPlayerForecast(
             player_id=player.player_id,

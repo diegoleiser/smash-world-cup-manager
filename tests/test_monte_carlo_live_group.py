@@ -209,6 +209,50 @@ class LiveGroupForecastTests(unittest.TestCase):
             probabilities = set(player.group_seed_probabilities.values())
             self.assertLessEqual(probabilities, {0.0, 1.0})
 
+    def test_complete_tied_group_uses_final_tiebreak_for_locked_status(self) -> None:
+        tied_matches = [
+            LiveGroupMatch(
+                "a",
+                "b",
+                GROUP_MATCH_COMPLETED,
+                "a",
+                2,
+                0,
+            ),
+            LiveGroupMatch(
+                "b",
+                "c",
+                GROUP_MATCH_COMPLETED,
+                "b",
+                2,
+                0,
+            ),
+            LiveGroupMatch(
+                "c",
+                "a",
+                GROUP_MATCH_COMPLETED,
+                "c",
+                2,
+                1,
+            ),
+        ]
+        forecast = forecast_live_group(
+            self.players[:3],
+            tied_matches,
+            self.model,
+            20,
+            5,
+            winners_count=1,
+        )
+        status_by_player = {
+            player.player_id: player.winners_status
+            for player in forecast.players
+        }
+        self.assertEqual(status_by_player["a"], WINNERS_LOCKED)
+        self.assertEqual(status_by_player["b"], LOSERS_LOCKED)
+        self.assertEqual(status_by_player["c"], LOSERS_LOCKED)
+        self.assertNotIn(SIDE_OPEN, status_by_player.values())
+
     def test_draft_service_rejects_non_production_group_size(self) -> None:
         state = LiveDraftGroupState(
             draft_id="draft",
