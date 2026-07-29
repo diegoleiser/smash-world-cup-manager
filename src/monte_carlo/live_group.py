@@ -167,7 +167,7 @@ def _validate_live_group(
             raise ValueError("Only completed Sets may contain scores.")
 
 
-def _standing_match(match: LiveGroupMatch) -> dict[str, object]:
+def standing_match_dict(match: LiveGroupMatch) -> dict[str, object]:
     return {
         "player_1_id": match.player_1_id,
         "player_2_id": match.player_2_id,
@@ -208,7 +208,7 @@ def forecast_live_group(
     }
     current = calculate_group_standings(
         members,
-        [_standing_match(match) for match in matches],
+        [standing_match_dict(match) for match in matches],
         elo_by_player_id,
     )
     current_by_player_id = {
@@ -218,7 +218,7 @@ def forecast_live_group(
         match for match in matches if match.status == GROUP_MATCH_PENDING
     ]
     fixed_matches = [
-        _standing_match(match)
+        standing_match_dict(match)
         for match in matches
         if match.status != GROUP_MATCH_PENDING
     ]

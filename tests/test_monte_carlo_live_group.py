@@ -15,6 +15,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from monte_carlo.config import load_model_config  # noqa: E402
+from monte_carlo.bracket_forecast import forecast_bracket_start  # noqa: E402
 from monte_carlo.day_performance import estimate_group_day  # noqa: E402
 from monte_carlo.group_simulation import SimulationPlayer  # noqa: E402
 from monte_carlo.live_group import (  # noqa: E402
@@ -35,6 +36,7 @@ from tournament.group_stage_standings import (  # noqa: E402
     GROUP_MATCH_FORFEIT,
     GROUP_MATCH_PENDING,
 )
+from tournament.group_stage_pairings import generate_round_robin_pairings  # noqa: E402
 
 
 class LiveGroupForecastTests(unittest.TestCase):
@@ -316,6 +318,93 @@ class DayPosteriorTests(unittest.TestCase):
             self.model,
         )
         self.assertEqual(estimate.completed_score_sets, 1)
+
+
+class BracketStartForecastTests(unittest.TestCase):
+    def setUp(self) -> None:
+        config = load_model_config(
+            PROJECT_ROOT / "config" / "model_freeze_candidate_v0.2.json"
+        )
+        self.players = [
+            SimulationPlayer(
+                player_id=f"p{seed}",
+                display_name=f"Player {seed}",
+                initial_seed=seed,
+                initial_elo=1000.0,
+            )
+            for seed in range(1, 8)
+        ]
+        self.model = CombinedModel(
+            config,
+            {
+                player.player_id: PlayerParameters(
+                    player.player_id,
+                    player.display_name,
+                    0.0,
+                )
+                for player in self.players
+            },
+            {},
+        )
+        player_ids = [player.player_id for player in self.players]
+        self.matches = [
+            LiveGroupMatch(
+                first,
+                second,
+                GROUP_MATCH_COMPLETED,
+                first,
+                2,
+                0,
+            )
+            for round_pairings in generate_round_robin_pairings(player_ids)
+            for first, second in round_pairings
+        ]
+
+    def test_complete_group_activates_day_and_bracket_forecast(self) -> None:
+        forecast = forecast_bracket_start(
+            self.players,
+            self.matches,
+            self.model,
+            100,
+            77,
+        )
+        self.assertEqual(len(forecast.players), 7)
+        self.assertEqual(
+            {match.match_code for match in forecast.opening_matches},
+            {"W1M1", "W1M2", "L1M2"},
+        )
+        self.assertEqual(forecast.day_posterior.completed_score_sets, 21)
+        self.assertAlmostEqual(
+            sum(player.title_probability for player in forecast.players),
+            1.0,
+        )
+        self.assertAlmostEqual(
+            sum(
+                player.grand_final_probability
+                for player in forecast.players
+            ),
+            2.0,
+        )
+        for player in forecast.players:
+            self.assertAlmostEqual(
+                sum(player.placement_probabilities.values()),
+                1.0,
+            )
+
+    def test_pending_group_blocks_bracket_forecast(self) -> None:
+        incomplete = [
+            replace(self.matches[0], status=GROUP_MATCH_PENDING, winner_id=None,
+                    player_1_score=None, player_2_score=None),
+            *self.matches[1:],
+        ]
+        with self.assertRaisesRegex(ValueError, "Complete"):
+            forecast_bracket_start(
+                self.players,
+                incomplete,
+                self.model,
+                10,
+                1,
+            )
 
 
 if __name__ == "__main__":
