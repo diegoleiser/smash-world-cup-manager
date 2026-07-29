@@ -8,6 +8,12 @@ from pathlib import Path
 import smash_statistics as stats
 from db.connection import open_sqlite_connection
 from monte_carlo.group_simulation import SimulationPlayer
+from monte_carlo.bracket_continuation import (
+    BracketContinuationForecast,
+    BracketContinuationInput,
+    forecast_bracket_continuation,
+)
+from monte_carlo.day_performance import estimate_group_day
 from monte_carlo.live_group import (
     LiveGroupForecast,
     LiveGroupMatch,
@@ -16,6 +22,10 @@ from monte_carlo.live_group import (
 from monte_carlo.model import CombinedModel
 from tournament.bracket_constants import ENTRY_SPLIT_BY_GROUP_SEED
 from tournament.drafts import FORMAT_GROUP_STAGE
+from tournament.bracket_generation import (
+    get_draft_bracket_matches,
+    get_draft_bracket_routes,
+)
 
 
 @dataclass(frozen=True)
@@ -168,4 +178,62 @@ def forecast_live_draft_group(
         n_simulations,
         random_seed,
         winners_count=4,
+    )
+
+
+def load_draft_bracket_continuation(
+    db_path: str | Path,
+    draft_id: str,
+) -> BracketContinuationInput:
+    """Load persisted bracket rows, routes, and bracket-seed order."""
+
+    matches = get_draft_bracket_matches(db_path, draft_id)
+    routes = get_draft_bracket_routes(db_path, draft_id)
+    if not matches:
+        raise ValueError("Generate the Bracket before forecasting it.")
+    with open_sqlite_connection(db_path) as connection:
+        seed_rows = connection.execute(
+            """
+            SELECT player_id
+            FROM tournament_draft_participants
+            WHERE draft_id = ?
+              AND bracket_seed IS NOT NULL
+            ORDER BY bracket_seed
+            """,
+            (draft_id,),
+        ).fetchall()
+    seeded_player_ids = tuple(str(row["player_id"]) for row in seed_rows)
+    if len(seeded_player_ids) != 7:
+        raise ValueError(
+            "The current production Bracket forecast requires seven players."
+        )
+    return BracketContinuationInput(
+        matches=tuple(matches),
+        routes=tuple(routes),
+        seeded_player_ids=seeded_player_ids,
+    )
+
+
+def forecast_live_draft_bracket(
+    db_path: str | Path,
+    draft_id: str,
+    model: CombinedModel,
+    n_simulations: int,
+    random_seed: int,
+) -> BracketContinuationForecast:
+    """Forecast a persisted partial bracket with frozen Group Day values."""
+
+    group_state = load_live_draft_group_state(db_path, draft_id)
+    day_posterior = estimate_group_day(
+        [player.player_id for player in group_state.players],
+        group_state.matches,
+        model,
+    )
+    bracket_state = load_draft_bracket_continuation(db_path, draft_id)
+    return forecast_bracket_continuation(
+        bracket_state,
+        model,
+        day_posterior.values,
+        n_simulations,
+        random_seed,
     )
