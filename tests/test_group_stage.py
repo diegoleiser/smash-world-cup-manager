@@ -367,7 +367,7 @@ class GroupStandingsTests(GroupStageDatabaseTestCase):
         )
         self.assertTrue(standings[0]["complete"])
 
-    def test_unresolved_three_way_mini_table_uses_game_percentage(
+    def test_unresolved_three_way_mini_table_uses_games_won_first(
         self,
     ) -> None:
         self.add_group("group-1", 1, ["a", "b", "c", "d"])
@@ -404,7 +404,225 @@ class GroupStandingsTests(GroupStageDatabaseTestCase):
                 player["player_id"]
                 for player in standings[0]["standings"]
             ],
+            ["a", "c", "b", "d"],
+        )
+
+    def test_equal_games_won_use_game_percentage_before_elo(self) -> None:
+        self.add_group("group-1", 1, ["a", "b", "c", "d"])
+
+        results = [
+            ("a", "b", "a", 2, 0),
+            ("c", "a", "c", 2, 1),
+            ("a", "d", "a", 2, 1),
+            ("b", "c", "b", 2, 1),
+            ("b", "d", "b", 2, 0),
+            ("c", "d", "c", 2, 0),
+        ]
+
+        for match_number, result in enumerate(results, start=1):
+            player_1, player_2, winner, score_1, score_2 = result
+            self.add_match(
+                "group-1",
+                match_number,
+                player_1,
+                player_2,
+                status=tournament.GROUP_MATCH_COMPLETED,
+                winner_id=winner,
+                player_1_score=score_1,
+                player_2_score=score_2,
+            )
+
+        standings = tournament.get_draft_group_standings(
+            self.db_path,
+            "draft",
+        )[0]["standings"]
+
+        tied_players = [
+            player
+            for player in standings
+            if player["player_id"] in {"a", "b", "c"}
+        ]
+
+        self.assertEqual(
+            [player["games_won"] for player in tied_players],
+            [5, 5, 4],
+        )
+        self.assertEqual(
+            [player["player_id"] for player in tied_players],
+            ["a", "c", "b"],
+        )
+
+    def test_forfeit_uses_game_percentage_before_games_won(self) -> None:
+        tied_players = [
+            {
+                "player_id": player_id,
+                "player": self.PLAYER_NAMES[player_id],
+                "initial_seed": seed,
+                "initial_elo": 1000.0,
+                "games_won": games_won,
+                "game_win_percentage": game_win_percentage,
+            }
+            for seed, (
+                player_id,
+                games_won,
+                game_win_percentage,
+            ) in enumerate(
+                [
+                    ("a", 7, 58.3),
+                    ("b", 6, 60.0),
+                    ("c", 1, 10.0),
+                ],
+                start=1,
+            )
+        ]
+        matches = [
+            {
+                "player_1_id": "a",
+                "player_2_id": "b",
+                "status": tournament.GROUP_MATCH_COMPLETED,
+                "winner_id": "a",
+                "player_1_score": 2,
+                "player_2_score": 1,
+            },
+            {
+                "player_1_id": "b",
+                "player_2_id": "c",
+                "status": tournament.GROUP_MATCH_COMPLETED,
+                "winner_id": "b",
+                "player_1_score": 2,
+                "player_2_score": 1,
+            },
+            {
+                "player_1_id": "c",
+                "player_2_id": "a",
+                "status": tournament.GROUP_MATCH_COMPLETED,
+                "winner_id": "c",
+                "player_1_score": 2,
+                "player_2_score": 1,
+            },
+            {
+                "player_1_id": "a",
+                "player_2_id": "d",
+                "status": tournament.GROUP_MATCH_COMPLETED,
+                "winner_id": "a",
+                "player_1_score": 2,
+                "player_2_score": 0,
+            },
+            {
+                "player_1_id": "b",
+                "player_2_id": "d",
+                "status": tournament.GROUP_MATCH_FORFEIT,
+                "winner_id": "b",
+                "player_1_score": None,
+                "player_2_score": None,
+            },
+            {
+                "player_1_id": "c",
+                "player_2_id": "d",
+                "status": tournament.GROUP_MATCH_COMPLETED,
+                "winner_id": "c",
+                "player_1_score": 2,
+                "player_2_score": 0,
+            },
+        ]
+
+        standings = group_stage_standings._resolve_group_tie(
+            tied_players,
+            matches,
+        )
+
+        self.assertEqual(
+            [player["player_id"] for player in standings],
+            ["b", "a", "c"],
+        )
+
+    def test_recursive_mini_table_resolves_remaining_subties(self) -> None:
+        tied_players = [
+            {
+                "player_id": player_id,
+                "player": self.PLAYER_NAMES[player_id],
+                "initial_seed": seed,
+                "initial_elo": 1000.0,
+                "games_won": 0,
+                "game_win_percentage": 50.0,
+            }
+            for seed, player_id in enumerate(
+                ["b", "a", "d", "c"],
+                start=1,
+            )
+        ]
+        winners = [
+            ("a", "b", "a"),
+            ("a", "c", "a"),
+            ("a", "d", "d"),
+            ("b", "c", "b"),
+            ("b", "d", "b"),
+            ("c", "d", "c"),
+        ]
+        matches = [
+            {
+                "player_1_id": player_1_id,
+                "player_2_id": player_2_id,
+                "status": tournament.GROUP_MATCH_COMPLETED,
+                "winner_id": winner_id,
+                "player_1_score": 2 if winner_id == player_1_id else 1,
+                "player_2_score": 2 if winner_id == player_2_id else 1,
+            }
+            for player_1_id, player_2_id, winner_id in winners
+        ]
+
+        standings = group_stage_standings._resolve_group_tie(
+            tied_players,
+            matches,
+        )
+
+        self.assertEqual(
+            [player["player_id"] for player in standings],
             ["a", "b", "c", "d"],
+        )
+
+    def test_fully_unresolved_tie_falls_back_to_elo_then_seed(
+        self,
+    ) -> None:
+        tied_players = [
+            {
+                "player_id": player_id,
+                "player": self.PLAYER_NAMES[player_id],
+                "initial_seed": initial_seed,
+                "initial_elo": initial_elo,
+                "games_won": 3,
+                "game_win_percentage": 50.0,
+            }
+            for player_id, initial_elo, initial_seed in [
+                ("a", 1000.0, 1),
+                ("b", 1100.0, 3),
+                ("c", 1100.0, 2),
+            ]
+        ]
+        matches = [
+            {
+                "player_1_id": player_1_id,
+                "player_2_id": player_2_id,
+                "status": tournament.GROUP_MATCH_COMPLETED,
+                "winner_id": winner_id,
+                "player_1_score": 2 if winner_id == player_1_id else 1,
+                "player_2_score": 2 if winner_id == player_2_id else 1,
+            }
+            for player_1_id, player_2_id, winner_id in [
+                ("a", "b", "a"),
+                ("b", "c", "b"),
+                ("c", "a", "c"),
+            ]
+        ]
+
+        standings = group_stage_standings._resolve_group_tie(
+            tied_players,
+            matches,
+        )
+
+        self.assertEqual(
+            [player["player_id"] for player in standings],
+            ["c", "b", "a"],
         )
 
     def test_forfeit_counts_as_set_but_not_games(self) -> None:
@@ -450,6 +668,46 @@ class GroupStandingsTests(GroupStageDatabaseTestCase):
         self.assertFalse(group["complete"])
         self.assertEqual(group["cancelled_matches"], 1)
         self.assertEqual(group["pending_matches"], 1)
+
+    def test_completed_set_without_score_counts_no_artificial_games(
+        self,
+    ) -> None:
+        members = [
+            {
+                "player_id": player_id,
+                "player": self.PLAYER_NAMES[player_id],
+                "initial_seed": seed,
+            }
+            for seed, player_id in enumerate(["a", "b"], start=1)
+        ]
+        matches = [
+            {
+                "player_1_id": "a",
+                "player_2_id": "b",
+                "status": tournament.GROUP_MATCH_COMPLETED,
+                "winner_id": "a",
+                "player_1_score": None,
+                "player_2_score": None,
+            },
+        ]
+
+        standings = group_stage_standings.calculate_group_standings(
+            members,
+            matches,
+            {"a": 1000.0, "b": 1000.0},
+        )["standings"]
+
+        self.assertEqual(
+            [
+                (
+                    player["sets_won"],
+                    player["games_won"],
+                    player["games_lost"],
+                )
+                for player in standings
+            ],
+            [(1, 0, 0), (0, 0, 0)],
+        )
 
 
 class GlobalGroupRankingTests(GroupStageDatabaseTestCase):

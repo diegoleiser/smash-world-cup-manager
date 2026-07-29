@@ -67,6 +67,43 @@ def _mini_table_wins(
     return wins
 
 
+def _have_equal_game_opportunities(
+    tied_players: list[dict[str, Any]],
+    matches: list[dict[str, Any]],
+) -> bool:
+    """
+    Return whether tied players had the same real chances to record Games.
+
+    A normally completed Set counts as one score-bearing opportunity,
+    regardless of whether it ended 2-0 or 2-1. Forfeits, cancelled Sets and
+    completed Sets without a usable score do not count as such an opportunity.
+    """
+
+    opportunity_counts = {
+        str(player["player_id"]): 0
+        for player in tied_players
+    }
+
+    for match in matches:
+        player_1_id = str(match["player_1_id"])
+        player_2_id = str(match["player_2_id"])
+
+        if (
+            str(match["status"]) != GROUP_MATCH_COMPLETED
+            or match.get("player_1_score") is None
+            or match.get("player_2_score") is None
+        ):
+            continue
+
+        if player_1_id in opportunity_counts:
+            opportunity_counts[player_1_id] += 1
+
+        if player_2_id in opportunity_counts:
+            opportunity_counts[player_2_id] += 1
+
+    return len(set(opportunity_counts.values())) <= 1
+
+
 def _resolve_group_tie(
     tied_players: list[dict[str, Any]],
     matches: list[dict[str, Any]],
@@ -76,8 +113,9 @@ def _resolve_group_tie(
 
     The mini-table contains only matches between the tied players. When it
     creates smaller tied subgroups, each subgroup is resolved recursively.
-    If the mini-table cannot separate the players, the fallback order is:
-    Game Win Percentage, Games won, initial Elo, initial Seed, then name.
+    If the mini-table cannot separate the players, absolute Games won precede
+    Game Win Percentage when the players had equal scoring opportunities.
+    With unequal opportunities, the normalized percentage comes first.
     """
 
     if len(tied_players) <= 1:
@@ -138,14 +176,31 @@ def _resolve_group_tie(
 
         return resolved
 
+    equal_game_opportunities = _have_equal_game_opportunities(
+        tied_players,
+        matches,
+    )
+
+    def percentage_sort_value(player: dict[str, Any]) -> float:
+        percentage = player["game_win_percentage"]
+        return float(percentage) if percentage is not None else -1.0
+
+    if equal_game_opportunities:
+        return sorted(
+            tied_players,
+            key=lambda player: (
+                -int(player["games_won"]),
+                -percentage_sort_value(player),
+                -float(player["initial_elo"]),
+                int(player["initial_seed"]),
+                str(player["player"]).casefold(),
+            ),
+        )
+
     return sorted(
         tied_players,
         key=lambda player: (
-            -(
-                float(player["game_win_percentage"])
-                if player["game_win_percentage"] is not None
-                else -1.0
-            ),
+            -percentage_sort_value(player),
             -int(player["games_won"]),
             -float(player["initial_elo"]),
             int(player["initial_seed"]),
@@ -211,7 +266,11 @@ def calculate_group_standings(
             player_2["sets_won"] += 1
             player_1["sets_lost"] += 1
 
-        if status == GROUP_MATCH_COMPLETED:
+        if (
+            status == GROUP_MATCH_COMPLETED
+            and match.get("player_1_score") is not None
+            and match.get("player_2_score") is not None
+        ):
             player_1_score = int(match["player_1_score"])
             player_2_score = int(match["player_2_score"])
 
