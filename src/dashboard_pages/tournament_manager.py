@@ -11,6 +11,219 @@ import streamlit as st
 
 import bracket_visualization
 import tournament_manager
+from monte_carlo.artifacts import ArtifactError, load_artifact
+from monte_carlo.live_service import (
+    forecast_live_draft_bracket,
+    forecast_live_draft_group,
+)
+
+
+@st.cache_resource
+def _load_live_forecast_model(artifact_path: str):
+    return load_artifact(Path(artifact_path)).model
+
+
+@st.cache_data(show_spinner=False)
+def _cached_live_group_forecast(
+    db_path: str,
+    draft_id: str,
+    artifact_path: str,
+):
+    return forecast_live_draft_group(
+        db_path,
+        draft_id,
+        _load_live_forecast_model(artifact_path),
+        10_000,
+        20260730,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _cached_live_bracket_forecast(
+    db_path: str,
+    draft_id: str,
+    artifact_path: str,
+):
+    return forecast_live_draft_bracket(
+        db_path,
+        draft_id,
+        _load_live_forecast_model(artifact_path),
+        10_000,
+        20260730,
+    )
+
+
+def _render_live_group_forecast(
+    *,
+    db_path: str | Path,
+    draft_id: str,
+    artifact_path: Path,
+    player_names: dict[str, str],
+) -> None:
+    st.markdown("### Live Forecast · Preview")
+    try:
+        with st.spinner("Updating qualification probabilities…"):
+            forecast = _cached_live_group_forecast(
+                str(db_path),
+                draft_id,
+                str(artifact_path),
+            )
+    except (
+        ArtifactError,
+        FileNotFoundError,
+        KeyError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
+        st.caption(f"Forecast unavailable: {exc}")
+        return
+    rows = [
+        {
+            "Player": player.display_name,
+            "Current": (
+                f"{player.current_sets_won}–{player.current_sets_lost}"
+            ),
+            "Projected Wins": player.expected_final_sets_won,
+            "P(Winners)": player.winners_probability * 100,
+            "Status": player.winners_status,
+        }
+        for player in sorted(
+            forecast.players,
+            key=lambda item: item.winners_probability,
+            reverse=True,
+        )
+    ]
+    st.dataframe(
+        pd.DataFrame(rows),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Projected Wins": st.column_config.NumberColumn(format="%.2f"),
+            "P(Winners)": st.column_config.NumberColumn(format="%.1f%%"),
+        },
+    )
+    if forecast.match_leverage:
+        st.markdown("#### Open-Set Leverage")
+        leverage_rows = []
+        for match in forecast.match_leverage:
+            first_swing = (
+                match.player_1_winners_if_win
+                - match.player_1_winners_if_loss
+            )
+            second_swing = (
+                match.player_2_winners_if_win
+                - match.player_2_winners_if_loss
+            )
+            leverage_rows.append(
+                {
+                    "Set": (
+                        f"{player_names.get(match.player_1_id, match.player_1_id)} "
+                        f"vs {player_names.get(match.player_2_id, match.player_2_id)}"
+                    ),
+                    "Set Probability": (
+                        match.player_1_set_win_probability * 100
+                    ),
+                    "P1 Winners Swing": first_swing * 100,
+                    "P2 Winners Swing": second_swing * 100,
+                    "_importance": max(first_swing, second_swing),
+                }
+            )
+        leverage_frame = (
+            pd.DataFrame(leverage_rows)
+            .sort_values("_importance", ascending=False)
+            .drop(columns="_importance")
+            .head(5)
+        )
+        st.dataframe(
+            leverage_frame,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Set Probability": st.column_config.NumberColumn(
+                    "P(first player wins)",
+                    format="%.1f%%",
+                ),
+                "P1 Winners Swing": st.column_config.NumberColumn(
+                    format="+%.1f%%",
+                ),
+                "P2 Winners Swing": st.column_config.NumberColumn(
+                    format="+%.1f%%",
+                ),
+            },
+        )
+    st.caption(
+        "10'000 simulations · completed results fixed · remaining Group "
+        "Sets use frozen pre-tournament strengths · provisional UI"
+    )
+
+
+def _render_live_bracket_forecast(
+    *,
+    db_path: str | Path,
+    draft_id: str,
+    artifact_path: Path,
+    player_names: dict[str, str],
+) -> None:
+    st.markdown("### Live Forecast · Preview")
+    try:
+        with st.spinner("Updating bracket probabilities…"):
+            forecast = _cached_live_bracket_forecast(
+                str(db_path),
+                draft_id,
+                str(artifact_path),
+            )
+    except (
+        ArtifactError,
+        FileNotFoundError,
+        KeyError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
+        st.caption(f"Forecast unavailable: {exc}")
+        return
+    if forecast.ready_matches:
+        match_columns = st.columns(min(3, len(forecast.ready_matches)))
+        for column, match in zip(
+            match_columns,
+            forecast.ready_matches[:3],
+        ):
+            column.metric(
+                match.match_code,
+                (
+                    f"{player_names.get(match.player_1_id, match.player_1_id)} "
+                    f"{match.player_1_win_probability:.0%}"
+                ),
+                help=(
+                    f"Probability that "
+                    f"{player_names.get(match.player_1_id, match.player_1_id)} "
+                    "wins this Set."
+                ),
+            )
+    rows = [
+        {
+            "Player": player_names.get(player.player_id, player.player_id),
+            "P(GF)": player.grand_final_probability * 100,
+            "P(Title)": player.title_probability * 100,
+        }
+        for player in sorted(
+            forecast.players,
+            key=lambda item: item.title_probability,
+            reverse=True,
+        )
+    ]
+    st.dataframe(
+        pd.DataFrame(rows),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "P(GF)": st.column_config.NumberColumn(format="%.1f%%"),
+            "P(Title)": st.column_config.NumberColumn(format="%.1f%%"),
+        },
+    )
+    st.caption(
+        "10'000 simulations · completed Bracket Sets fixed · Group Day "
+        "posterior frozen at Bracket start · provisional UI"
+    )
 
 
 def _draft_stage(
@@ -48,6 +261,7 @@ def _draft_stage(
 def render_tournament_manager(
     *,
     db_path: str | Path,
+    model_artifact_path: Path,
     load_players: Callable[..., list[dict[str, Any]]],
     load_tournaments: Callable[..., list[dict[str, Any]]],
     load_tournament_drafts: Callable[..., list[dict[str, Any]]],
@@ -194,6 +408,10 @@ def render_tournament_manager(
     selected_draft_id = draft_by_label[selected_label]
 
     draft = load_tournament_draft(selected_draft_id)
+    forecast_player_names = {
+        str(participant["player_id"]): str(participant["player"])
+        for participant in draft["participants"]
+    }
 
     if (
         draft["format_type"]
@@ -1105,6 +1323,18 @@ def render_tournament_manager(
                                 ),
                             )
 
+                            if (
+                                len(draft["participants"]) == 7
+                                and len(draft_groups) == 1
+                                and not bracket_generated
+                            ):
+                                _render_live_group_forecast(
+                                    db_path=db_path,
+                                    draft_id=selected_draft_id,
+                                    artifact_path=model_artifact_path,
+                                    player_names=forecast_player_names,
+                                )
+
                             group_standings = (
                                 load_tournament_draft_group_standings(
                                     selected_draft_id,
@@ -1843,6 +2073,20 @@ def render_tournament_manager(
                     "bracket sets played"
                 ),
             )
+
+            if (
+                draft["format_type"]
+                == tournament_manager.FORMAT_GROUP_STAGE
+                and len(draft["participants"]) == 7
+                and len(draft_groups) == 1
+                and not draft_bracket_state["champion_name"]
+            ):
+                _render_live_bracket_forecast(
+                    db_path=db_path,
+                    draft_id=selected_draft_id,
+                    artifact_path=model_artifact_path,
+                    player_names=forecast_player_names,
+                )
 
             if draft_bracket_state["champion_name"]:
                 st.success(

@@ -1339,6 +1339,7 @@ def show_tournament_manager() -> None:
 
     tournament_manager_page.render_tournament_manager(
         db_path=DB_PATH,
+        model_artifact_path=MODEL_ARTIFACT_PATH,
         load_players=load_players,
         load_tournaments=load_tournaments,
         load_tournament_drafts=load_tournament_drafts,

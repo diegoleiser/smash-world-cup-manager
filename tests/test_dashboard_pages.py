@@ -124,6 +124,7 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
             "render_tournament_manager",
             {
                 "db_path",
+                "model_artifact_path",
                 "load_players",
                 "load_tournaments",
                 "load_tournament_drafts",
