@@ -237,6 +237,119 @@ class BracketContinuationTests(unittest.TestCase):
         self.assertEqual(result.champion_id, simulated.champion_id)
         self.assertEqual(result.placements, simulated.placements)
 
+    def test_pending_grand_final_reset_is_the_only_ready_set(self) -> None:
+        state = self.make_start_state()
+        simulated = next(
+            candidate
+            for seed in range(100)
+            if (
+                candidate := simulate_bracket_continuation(
+                    state,
+                    self.model,
+                    self.day_values,
+                    random.Random(seed),
+                )
+            ).grand_final_reset_played
+        )
+        matches = [dict(match) for match in state.matches]
+        by_code = {match["match_code"]: match for match in matches}
+        for played in simulated.sets:
+            match = by_code[played.match_code]
+            match.update(
+                {
+                    "player_1_id": played.player_1_id,
+                    "player_2_id": played.player_2_id,
+                    "winner_id": played.winner_id,
+                    "player_1_score": played.player_1_score,
+                    "player_2_score": played.player_2_score,
+                    "status": "completed",
+                }
+            )
+        reset = by_code["GFR"]
+        reset.update(
+            {
+                "winner_id": None,
+                "player_1_score": None,
+                "player_2_score": None,
+                "status": "pending",
+            }
+        )
+        forecast = forecast_bracket_continuation(
+            BracketContinuationInput(
+                matches=tuple(matches),
+                routes=state.routes,
+                seeded_player_ids=state.seeded_player_ids,
+            ),
+            self.model,
+            self.day_values,
+            100,
+            71,
+        )
+        self.assertEqual(
+            [match.match_code for match in forecast.ready_matches],
+            ["GFR"],
+        )
+        self.assertEqual(forecast.reset_probability, 1.0)
+        self.assertAlmostEqual(
+            sum(player.title_probability for player in forecast.players),
+            1.0,
+        )
+
+    def test_completed_reset_has_deterministic_final_forecast(self) -> None:
+        state = self.make_start_state()
+        simulated = next(
+            candidate
+            for seed in range(100)
+            if (
+                candidate := simulate_bracket_continuation(
+                    state,
+                    self.model,
+                    self.day_values,
+                    random.Random(seed),
+                )
+            ).grand_final_reset_played
+        )
+        matches = [dict(match) for match in state.matches]
+        by_code = {match["match_code"]: match for match in matches}
+        for played in simulated.sets:
+            by_code[played.match_code].update(
+                {
+                    "player_1_id": played.player_1_id,
+                    "player_2_id": played.player_2_id,
+                    "winner_id": played.winner_id,
+                    "player_1_score": played.player_1_score,
+                    "player_2_score": played.player_2_score,
+                    "status": "completed",
+                }
+            )
+        forecast = forecast_bracket_continuation(
+            BracketContinuationInput(
+                matches=tuple(matches),
+                routes=state.routes,
+                seeded_player_ids=state.seeded_player_ids,
+            ),
+            self.model,
+            self.day_values,
+            20,
+            99,
+        )
+        by_player = {
+            player.player_id: player for player in forecast.players
+        }
+        self.assertEqual(forecast.ready_matches, ())
+        self.assertEqual(forecast.reset_probability, 1.0)
+        self.assertEqual(
+            by_player[simulated.champion_id].title_probability,
+            1.0,
+        )
+        self.assertTrue(
+            all(
+                player.title_probability == 0.0
+                for player in forecast.players
+                if player.player_id != simulated.champion_id
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
