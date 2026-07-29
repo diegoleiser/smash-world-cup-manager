@@ -11,6 +11,7 @@ import streamlit as st
 
 import bracket_visualization
 import tournament_manager
+from dashboard_pages.forecast_format import format_winners_probability
 from monte_carlo.artifacts import ArtifactError, load_artifact
 from monte_carlo.live_service import (
     forecast_live_draft_bracket,
@@ -84,7 +85,10 @@ def _render_live_group_forecast(
                 f"{player.current_sets_won}–{player.current_sets_lost}"
             ),
             "Projected Wins": player.expected_final_sets_won,
-            "P(Winners)": player.winners_probability * 100,
+            "P(Winners)": format_winners_probability(
+                player.winners_probability,
+                player.winners_status,
+            ),
             "Status": player.winners_status,
         }
         for player in sorted(
@@ -99,7 +103,6 @@ def _render_live_group_forecast(
         width="stretch",
         column_config={
             "Projected Wins": st.column_config.NumberColumn(format="%.2f"),
-            "P(Winners)": st.column_config.NumberColumn(format="%.1f%%"),
         },
     )
     if forecast.match_leverage:

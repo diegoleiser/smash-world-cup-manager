@@ -14,6 +14,11 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from dashboard_pages.forecast_format import (  # noqa: E402
+    format_winners_probability,
+)
+
+
 class MatchupsPageBoundaryTests(unittest.TestCase):
     """Keep the page's dashboard dependencies explicit."""
 
@@ -59,6 +64,24 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
                 "load_elo_ranking",
                 "load_tournament_detail",
             },
+        )
+
+    def test_open_winners_probability_does_not_look_locked(self) -> None:
+        self.assertEqual(
+            format_winners_probability(1.0, "Side Open"),
+            ">99.9%",
+        )
+        self.assertEqual(
+            format_winners_probability(0.0, "Side Open"),
+            "<0.1%",
+        )
+        self.assertEqual(
+            format_winners_probability(1.0, "Winners Locked"),
+            "100.0%",
+        )
+        self.assertEqual(
+            format_winners_probability(0.0, "Losers Locked"),
+            "0.0%",
         )
 
     def test_monte_carlo_declares_every_data_dependency(self) -> None:
