@@ -10,6 +10,7 @@ data/*.db
 data/tournament_registry.csv
 data/raw/
 data/overrides/
+data/model_artifacts/
 private/
 
 # SQLite temporary files
