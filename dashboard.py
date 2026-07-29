@@ -23,6 +23,7 @@ try:
     import bracket_visualization
     from dashboard_pages import home as home_page
     from dashboard_pages import matchups as matchups_page
+    from dashboard_pages import monte_carlo as monte_carlo_page
     from dashboard_pages import player as player_page
     from dashboard_pages import tournaments as tournaments_page
     from dashboard_pages import tournament_manager as tournament_manager_page
@@ -44,6 +45,9 @@ except ImportError as exc:
 
 
 DB_PATH = PROJECT_ROOT / "data" / "smash_wm.db"
+MODEL_ARTIFACT_PATH = (
+    PROJECT_ROOT / "data" / "model_artifacts" / "combined_v0.2"
+)
 
 
 st.set_page_config(
@@ -1373,6 +1377,7 @@ def main() -> None:
         "Matchups",
         "Tournaments",
         "Tournament Manager",
+        "Monte Carlo",
     ]
 
     requested_page = st.query_params.get(
@@ -1417,6 +1422,12 @@ def main() -> None:
         show_tournaments()
     elif page == "Tournament Manager":
         show_tournament_manager()
+    elif page == "Monte Carlo":
+        monte_carlo_page.render_monte_carlo(
+            artifact_path=MODEL_ARTIFACT_PATH,
+            load_players=load_players,
+            load_elo_ranking=load_elo_ranking,
+        )
 
 
 if __name__ == "__main__":

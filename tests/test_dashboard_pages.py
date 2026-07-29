@@ -61,6 +61,17 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
             },
         )
 
+    def test_monte_carlo_declares_every_data_dependency(self) -> None:
+        self.assert_render_parameters(
+            "monte_carlo",
+            "render_monte_carlo",
+            {
+                "artifact_path",
+                "load_players",
+                "load_elo_ranking",
+            },
+        )
+
     def test_tournaments_declares_every_dashboard_dependency(self) -> None:
         self.assert_render_parameters(
             "tournaments",
