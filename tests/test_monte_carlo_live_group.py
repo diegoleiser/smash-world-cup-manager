@@ -15,8 +15,12 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from monte_carlo.config import load_model_config  # noqa: E402
+from monte_carlo.day_performance import estimate_group_day  # noqa: E402
 from monte_carlo.group_simulation import SimulationPlayer  # noqa: E402
 from monte_carlo.live_group import (  # noqa: E402
+    LOSERS_LOCKED,
+    SIDE_OPEN,
+    WINNERS_LOCKED,
     LiveGroupMatch,
     forecast_live_group,
 )
@@ -107,11 +111,26 @@ class LiveGroupForecastTests(unittest.TestCase):
         )
         self.assertEqual(forecast.completed_sets, 2)
         self.assertEqual(forecast.pending_sets, 3)
+        self.assertEqual(len(forecast.match_leverage), 3)
         for player in forecast.players:
             self.assertAlmostEqual(
                 sum(player.group_seed_probabilities.values()),
                 1.0,
             )
+            self.assertIn(
+                player.winners_status,
+                {WINNERS_LOCKED, SIDE_OPEN, LOSERS_LOCKED},
+            )
+        for match in forecast.match_leverage:
+            for probability in (
+                match.player_1_set_win_probability,
+                match.player_1_winners_if_win,
+                match.player_1_winners_if_loss,
+                match.player_2_winners_if_win,
+                match.player_2_winners_if_loss,
+            ):
+                self.assertGreaterEqual(probability, 0.0)
+                self.assertLessEqual(probability, 1.0)
         self.assertAlmostEqual(
             sum(player.winners_probability for player in forecast.players),
             2.0,
@@ -175,6 +194,15 @@ class LiveGroupForecastTests(unittest.TestCase):
             winners_count=2,
         )
         self.assertEqual(forecast.pending_sets, 0)
+        self.assertEqual(forecast.match_leverage, ())
+        status_by_player = {
+            player.player_id: player.winners_status
+            for player in forecast.players
+        }
+        self.assertEqual(status_by_player["b"], WINNERS_LOCKED)
+        self.assertEqual(status_by_player["c"], WINNERS_LOCKED)
+        self.assertEqual(status_by_player["a"], LOSERS_LOCKED)
+        self.assertEqual(status_by_player["d"], LOSERS_LOCKED)
         for player in forecast.players:
             probabilities = set(player.group_seed_probabilities.values())
             self.assertLessEqual(probabilities, {0.0, 1.0})
@@ -202,6 +230,92 @@ class LiveGroupForecastTests(unittest.TestCase):
                 10,
                 1,
             )
+
+
+class DayPosteriorTests(unittest.TestCase):
+    def setUp(self) -> None:
+        config = load_model_config(
+            PROJECT_ROOT / "config" / "model_freeze_candidate_v0.2.json"
+        )
+        self.player_ids = ["a", "b", "c"]
+        self.model = CombinedModel(
+            config,
+            {
+                player_id: PlayerParameters(
+                    player_id,
+                    player_id.upper(),
+                    0.0,
+                    0.0,
+                )
+                for player_id in self.player_ids
+            },
+            {},
+        )
+        self.complete_matches = [
+            LiveGroupMatch(
+                "a",
+                "b",
+                GROUP_MATCH_COMPLETED,
+                "a",
+                2,
+                0,
+            ),
+            LiveGroupMatch(
+                "a",
+                "c",
+                GROUP_MATCH_COMPLETED,
+                "a",
+                2,
+                0,
+            ),
+            LiveGroupMatch(
+                "b",
+                "c",
+                GROUP_MATCH_COMPLETED,
+                "b",
+                2,
+                1,
+            ),
+        ]
+
+    def test_complete_group_estimates_and_centers_day_values(self) -> None:
+        estimate = estimate_group_day(
+            self.player_ids,
+            self.complete_matches,
+            self.model,
+        )
+        self.assertTrue(estimate.success)
+        self.assertEqual(estimate.completed_score_sets, 3)
+        self.assertGreater(estimate.values["a"], estimate.values["b"])
+        self.assertGreater(estimate.values["b"], estimate.values["c"])
+        self.assertAlmostEqual(sum(estimate.values.values()), 0.0, places=8)
+
+    def test_pending_set_blocks_day_activation(self) -> None:
+        with self.assertRaisesRegex(ValueError, "only after"):
+            estimate_group_day(
+                self.player_ids,
+                [
+                    *self.complete_matches,
+                    LiveGroupMatch("a", "c", GROUP_MATCH_PENDING),
+                ],
+                self.model,
+            )
+
+    def test_forfeit_does_not_create_day_evidence(self) -> None:
+        estimate = estimate_group_day(
+            self.player_ids,
+            [
+                self.complete_matches[0],
+                LiveGroupMatch(
+                    "a",
+                    "c",
+                    GROUP_MATCH_FORFEIT,
+                    "a",
+                ),
+            ],
+            self.model,
+        )
+        self.assertEqual(estimate.completed_score_sets, 1)
 
 
 if __name__ == "__main__":

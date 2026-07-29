@@ -37,11 +37,24 @@ class LiveGroupPlayerForecast:
     expected_final_sets_won: float
     group_seed_probabilities: dict[int, float]
     winners_probability: float
+    winners_status: str
+
+
+@dataclass(frozen=True)
+class LiveMatchLeverage:
+    player_1_id: str
+    player_2_id: str
+    player_1_set_win_probability: float
+    player_1_winners_if_win: float
+    player_1_winners_if_loss: float
+    player_2_winners_if_win: float
+    player_2_winners_if_loss: float
 
 
 @dataclass(frozen=True)
 class LiveGroupForecast:
     players: tuple[LiveGroupPlayerForecast, ...]
+    match_leverage: tuple[LiveMatchLeverage, ...]
     current_standings: tuple[dict[str, object], ...]
     completed_sets: int
     pending_sets: int
@@ -50,6 +63,62 @@ class LiveGroupForecast:
     model_version: str
     training_cutoff: str
     probability_policy: str
+
+
+WINNERS_LOCKED = "Winners Locked"
+SIDE_OPEN = "Side Open"
+LOSERS_LOCKED = "Losers Locked"
+
+
+def _safe_winners_statuses(
+    players: list[SimulationPlayer],
+    matches: list[LiveGroupMatch],
+    current_by_player_id: dict[str, dict[str, object]],
+    winners_count: int,
+) -> dict[str, str]:
+    """
+    Derive only mathematically safe locked states from Set-win bounds.
+
+    Equal maximums remain open because a future tiebreak could still decide
+    either way. This deliberately prefers ``Side Open`` over a false lock.
+    """
+
+    remaining_by_player_id = {player.player_id: 0 for player in players}
+    for match in matches:
+        if match.status != GROUP_MATCH_PENDING:
+            continue
+        remaining_by_player_id[match.player_1_id] += 1
+        remaining_by_player_id[match.player_2_id] += 1
+    minimum_wins = {
+        player.player_id: int(
+            current_by_player_id[player.player_id]["sets_won"]
+        )
+        for player in players
+    }
+    maximum_wins = {
+        player_id: minimum_wins[player_id] + remaining
+        for player_id, remaining in remaining_by_player_id.items()
+    }
+    statuses: dict[str, str] = {}
+    for player in players:
+        player_id = player.player_id
+        possible_challengers = sum(
+            other_id != player_id
+            and maximum_wins[other_id] >= minimum_wins[player_id]
+            for other_id in minimum_wins
+        )
+        guaranteed_ahead = sum(
+            other_id != player_id
+            and minimum_wins[other_id] > maximum_wins[player_id]
+            for other_id in minimum_wins
+        )
+        if possible_challengers < winners_count:
+            statuses[player_id] = WINNERS_LOCKED
+        elif guaranteed_ahead >= winners_count:
+            statuses[player_id] = LOSERS_LOCKED
+        else:
+            statuses[player_id] = SIDE_OPEN
+    return statuses
 
 
 def _validate_live_group(
@@ -163,20 +232,45 @@ def forecast_live_group(
         for player in players
     }
     winners_counts = {player.player_id: 0 for player in players}
+    pending_probabilities = [
+        model.set_probability(
+            match.player_1_id,
+            match.player_2_id,
+            best_of=3,
+        )
+        for match in pending_matches
+    ]
+    outcome_counts = [
+        {True: 0, False: 0} for _ in pending_matches
+    ]
+    qualified_by_outcome = [
+        {
+            True: {
+                match.player_1_id: 0,
+                match.player_2_id: 0,
+            },
+            False: {
+                match.player_1_id: 0,
+                match.player_2_id: 0,
+            },
+        }
+        for match in pending_matches
+    ]
 
     for _ in range(n_simulations):
         simulated_matches = list(fixed_matches)
-        for match in pending_matches:
+        simulated_outcomes: list[bool] = []
+        for match, probability in zip(
+            pending_matches,
+            pending_probabilities,
+            strict=True,
+        ):
             normal, decider = model.game_probabilities(
                 match.player_1_id,
                 match.player_2_id,
             )
-            probability = model.set_probability(
-                match.player_1_id,
-                match.player_2_id,
-                best_of=3,
-            )
             player_1_won = rng.random() < probability
+            simulated_outcomes.append(player_1_won)
             score = simulate_scoreline(
                 player_a_won=player_1_won,
                 normal_game_probability=normal,
@@ -203,6 +297,20 @@ def forecast_live_group(
             simulated_matches,
             elo_by_player_id,
         )["standings"]
+        qualified_player_ids = {
+            str(row["player_id"])
+            for row in final_standings
+            if int(row["placement"]) <= winners_count
+        }
+        for match_index, (match, player_1_won) in enumerate(
+            zip(pending_matches, simulated_outcomes, strict=True)
+        ):
+            outcome_counts[match_index][player_1_won] += 1
+            for player_id in (match.player_1_id, match.player_2_id):
+                if player_id in qualified_player_ids:
+                    qualified_by_outcome[match_index][player_1_won][
+                        player_id
+                    ] += 1
         for row in final_standings:
             player_id = str(row["player_id"])
             placement = int(row["placement"])
@@ -212,6 +320,12 @@ def forecast_live_group(
                 winners_counts[player_id] += 1
 
     denominator = float(n_simulations)
+    statuses = _safe_winners_statuses(
+        players,
+        matches,
+        current_by_player_id,
+        winners_count,
+    )
     forecasts = tuple(
         LiveGroupPlayerForecast(
             player_id=player.player_id,
@@ -232,11 +346,45 @@ def forecast_live_group(
             winners_probability=(
                 winners_counts[player.player_id] / denominator
             ),
+            winners_status=statuses[player.player_id],
         )
         for player in sorted(players, key=lambda item: item.initial_seed)
     )
+    match_leverage = tuple(
+        LiveMatchLeverage(
+            player_1_id=match.player_1_id,
+            player_2_id=match.player_2_id,
+            player_1_set_win_probability=pending_probabilities[index],
+            player_1_winners_if_win=(
+                qualified_by_outcome[index][True][match.player_1_id]
+                / outcome_counts[index][True]
+                if outcome_counts[index][True]
+                else 0.0
+            ),
+            player_1_winners_if_loss=(
+                qualified_by_outcome[index][False][match.player_1_id]
+                / outcome_counts[index][False]
+                if outcome_counts[index][False]
+                else 0.0
+            ),
+            player_2_winners_if_win=(
+                qualified_by_outcome[index][False][match.player_2_id]
+                / outcome_counts[index][False]
+                if outcome_counts[index][False]
+                else 0.0
+            ),
+            player_2_winners_if_loss=(
+                qualified_by_outcome[index][True][match.player_2_id]
+                / outcome_counts[index][True]
+                if outcome_counts[index][True]
+                else 0.0
+            ),
+        )
+        for index, match in enumerate(pending_matches)
+    )
     return LiveGroupForecast(
         players=forecasts,
+        match_leverage=match_leverage,
         current_standings=tuple(current["standings"]),
         completed_sets=sum(
             match.status in {GROUP_MATCH_COMPLETED, GROUP_MATCH_FORFEIT}
