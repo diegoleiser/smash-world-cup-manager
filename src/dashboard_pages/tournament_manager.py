@@ -413,7 +413,9 @@ def _render_group_control_center(
             selected_label = recommended_label
             st.session_state[choice_key] = recommended_label
 
-        if len(option_by_label) > 1:
+        has_alternatives = len(option_by_label) > 1
+        card_height = 470 if has_alternatives else None
+        if has_alternatives:
             action_column, alternatives_column = st.columns([1.45, 1])
         else:
             action_column = st.container()
@@ -448,7 +450,7 @@ def _render_group_control_center(
                         )
                         else 1.0 - leverage.player_1_set_win_probability
                     )
-            with st.container(border=True):
+            with st.container(border=True, height=card_height):
                 st.markdown(
                     (
                         '<div style="text-align:center;opacity:0.68;'
@@ -501,16 +503,41 @@ def _render_group_control_center(
         if alternatives_column is not None:
             with alternatives_column:
                 st.markdown("### Other Playable Sets")
-                with st.container(border=True):
-                    st.selectbox(
-                        "Play instead",
-                        options=list(option_by_label),
-                        index=list(option_by_label).index(selected_label),
-                        key=choice_key,
-                    )
+                alternative_labels = [
+                    label
+                    for label in option_by_label
+                    if label != selected_label
+                ]
+                visible_alternatives = alternative_labels[:5]
+                with st.container(border=True, height=card_height):
                     st.caption(
-                        "Choose any currently open Group Set."
+                        "Choose another currently open Group Set."
                     )
+                    for label in visible_alternatives:
+                        match = option_by_label[label]
+                        if st.button(
+                            (
+                                f"{match['player_1']} vs "
+                                f"{match['player_2']}  ·  "
+                                f"{match['group_name']}, "
+                                f"Round {match['round_number']}"
+                            ),
+                            key=(
+                                "control_choose_group_"
+                                f"{match['group_match_id']}"
+                            ),
+                            width="stretch",
+                        ):
+                            st.session_state[choice_key] = label
+                            st.rerun()
+                    remaining_count = len(alternative_labels) - len(
+                        visible_alternatives
+                    )
+                    if remaining_count:
+                        st.caption(
+                            f"+ {remaining_count} more open Sets "
+                            "under All Sets"
+                        )
     else:
         st.success("All Group Sets are decided.")
 
