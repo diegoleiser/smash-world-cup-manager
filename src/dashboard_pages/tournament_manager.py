@@ -520,14 +520,27 @@ def _render_group_control_center(
                             padding: 0.65rem 0.9rem;
                             text-align: left;
                             transition:
-                                background-color 120ms ease,
-                                border-color 120ms ease;
+                                border-color 0.15s ease,
+                                box-shadow 0.15s ease,
+                                transform 0.15s ease;
                         }
                         div[data-testid="stVerticalBlockBorderWrapper"]:has(
                             .other-playable-sets-marker
                         ) button:hover {
-                            background-color: rgba(255, 75, 75, 0.08);
-                            border-color: rgb(255, 75, 75);
+                            border-color: var(--st-primary-color);
+                            box-shadow:
+                                0 2px 5px rgba(0, 0, 0, 0.32),
+                                0 8px 24px rgba(59, 130, 246, 0.18);
+                            transform: translateY(-1px);
+                        }
+                        div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                            .other-playable-sets-marker
+                        ) button:focus-visible {
+                            border-color: var(--st-primary-color);
+                            box-shadow:
+                                0 0 0 2px rgba(96, 165, 250, 0.22),
+                                0 8px 24px rgba(59, 130, 246, 0.18);
+                            transform: translateY(-1px);
                         }
                         div[data-testid="stVerticalBlockBorderWrapper"]:has(
                             .other-playable-sets-marker
@@ -544,7 +557,7 @@ def _render_group_control_center(
                             display: block;
                             margin-bottom: 0.2rem;
                             color: rgb(250, 250, 250);
-                            font-size: 1.08rem;
+                            font-size: 1.25rem;
                             line-height: 1.2;
                         }
                         </style>
