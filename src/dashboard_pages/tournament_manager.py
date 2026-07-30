@@ -415,56 +415,83 @@ def _render_group_control_center(
             if selected_label not in option_by_label:
                 selected_label = recommended_label
             selected = option_by_label[selected_label]
-            st.markdown(
-                f"## {selected['player_1']} vs "
-                f"{selected['player_2']}"
-            )
-            st.caption(
-                f"{selected['group_name']} · Round "
-                f"{selected['round_number']}"
-            )
-            if forecast is not None:
-                leverage = next(
+            with st.container(border=True):
+                st.markdown(
                     (
-                        item
-                        for item in forecast.match_leverage
-                        if {
-                            item.player_1_id,
-                            item.player_2_id,
-                        }
-                        == {
-                            str(selected["player_1_id"]),
-                            str(selected["player_2_id"]),
-                        }
+                        '<div style="'
+                        'display:grid;'
+                        'grid-template-columns:1fr auto 1fr;'
+                        'align-items:center;'
+                        'gap:1rem;'
+                        'padding:0.35rem 0 0.2rem;'
+                        '">'
+                        '<div style="text-align:right;font-size:1.65rem;'
+                        'font-weight:750;">'
+                        f"{html.escape(str(selected['player_1']))}"
+                        '</div>'
+                        '<div style="opacity:0.55;font-size:0.9rem;'
+                        'font-weight:700;">VS</div>'
+                        '<div style="text-align:left;font-size:1.65rem;'
+                        'font-weight:750;">'
+                        f"{html.escape(str(selected['player_2']))}"
+                        '</div>'
+                        '</div>'
                     ),
-                    None,
+                    unsafe_allow_html=True,
                 )
-                if leverage is not None:
-                    if (
-                        leverage.player_1_id
-                        == str(selected["player_1_id"])
-                    ):
-                        player_1_probability = (
-                            leverage.player_1_set_win_probability
-                        )
-                    else:
-                        player_1_probability = (
-                            1.0 - leverage.player_1_set_win_probability
-                        )
-                    probability_columns = st.columns(2)
-                    probability_columns[0].metric(
-                        f"{selected['player_1']} win probability",
-                        f"{player_1_probability:.1%}",
+                st.markdown(
+                    (
+                        '<div style="text-align:center;opacity:0.68;'
+                        'margin:0 0 0.75rem;">'
+                        f"{html.escape(str(selected['group_name']))} · "
+                        f"Round {int(selected['round_number'])}"
+                        '</div>'
+                    ),
+                    unsafe_allow_html=True,
+                )
+                if forecast is not None:
+                    leverage = next(
+                        (
+                            item
+                            for item in forecast.match_leverage
+                            if {
+                                item.player_1_id,
+                                item.player_2_id,
+                            }
+                            == {
+                                str(selected["player_1_id"]),
+                                str(selected["player_2_id"]),
+                            }
+                        ),
+                        None,
                     )
-                    probability_columns[1].metric(
-                        f"{selected['player_2']} win probability",
-                        f"{1.0 - player_1_probability:.1%}",
-                    )
-            _render_group_quick_result(
-                db_path=db_path,
-                draft_id=draft_id,
-                match=selected,
-            )
+                    if leverage is not None:
+                        if (
+                            leverage.player_1_id
+                            == str(selected["player_1_id"])
+                        ):
+                            player_1_probability = (
+                                leverage.player_1_set_win_probability
+                            )
+                        else:
+                            player_1_probability = (
+                                1.0 - leverage.player_1_set_win_probability
+                            )
+                        probability_columns = st.columns(2)
+                        probability_columns[0].metric(
+                            f"{selected['player_1']} win probability",
+                            f"{player_1_probability:.1%}",
+                        )
+                        probability_columns[1].metric(
+                            f"{selected['player_2']} win probability",
+                            f"{1.0 - player_1_probability:.1%}",
+                        )
+                st.divider()
+                _render_group_quick_result(
+                    db_path=db_path,
+                    draft_id=draft_id,
+                    match=selected,
+                )
         with alternatives_column:
             st.markdown("### Choose Another Set")
             st.selectbox(
