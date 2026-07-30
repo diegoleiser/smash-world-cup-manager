@@ -21,6 +21,7 @@ from monte_carlo.live_group import (
 )
 from monte_carlo.model import CombinedModel
 from tournament.bracket_constants import ENTRY_SPLIT_BY_GROUP_SEED
+from tournament.bracket_seeding import get_bracket_size
 from tournament.drafts import FORMAT_GROUP_STAGE
 from tournament.bracket_generation import (
     get_draft_bracket_matches,
@@ -166,18 +167,20 @@ def forecast_live_draft_group(
     """Load and forecast the current standard single-group draft."""
 
     state = load_live_draft_group_state(db_path, draft_id)
-    if len(state.players) != 7:
-        raise ValueError(
-            "The current production Live Group forecast requires "
-            "exactly seven players."
-        )
+    bracket_size = get_bracket_size(len(state.players))
+    model = model.with_neutral_players(
+        {
+            player.player_id: player.display_name
+            for player in state.players
+        }
+    )
     return forecast_live_group(
         list(state.players),
         list(state.matches),
         model,
         n_simulations,
         random_seed,
-        winners_count=4,
+        winners_count=bracket_size // 2,
     )
 
 
@@ -203,10 +206,7 @@ def load_draft_bracket_continuation(
             (draft_id,),
         ).fetchall()
     seeded_player_ids = tuple(str(row["player_id"]) for row in seed_rows)
-    if len(seeded_player_ids) != 7:
-        raise ValueError(
-            "The current production Bracket forecast requires seven players."
-        )
+    get_bracket_size(len(seeded_player_ids))
     return BracketContinuationInput(
         matches=tuple(matches),
         routes=tuple(routes),
@@ -224,6 +224,12 @@ def forecast_live_draft_bracket(
     """Forecast a persisted partial bracket with frozen Group Day values."""
 
     group_state = load_live_draft_group_state(db_path, draft_id)
+    model = model.with_neutral_players(
+        {
+            player.player_id: player.display_name
+            for player in group_state.players
+        }
+    )
     day_posterior = estimate_group_day(
         [player.player_id for player in group_state.players],
         group_state.matches,

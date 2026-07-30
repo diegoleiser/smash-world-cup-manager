@@ -13,8 +13,13 @@ from monte_carlo.model import CombinedModel
 from tournament.bracket_constants import (
     BRACKET_SIDE_LOSERS,
     BRACKET_SIDE_WINNERS,
+    ENTRY_SPLIT_BY_GROUP_SEED,
 )
-from tournament.bracket_seeding import get_split_bracket_seed_pairs
+from tournament.bracket_matches import build_bracket_plan
+from tournament.bracket_seeding import (
+    get_bracket_size,
+    get_split_bracket_seed_pairs,
+)
 from tournament.group_stage_standings import calculate_group_standings
 
 
@@ -56,8 +61,9 @@ def forecast_bracket_start(
 ) -> BracketStartForecast:
     """Forecast the split bracket immediately after a complete group."""
 
-    if len(players) != 7:
-        raise ValueError("Bracket-start forecast requires seven players.")
+    participant_count = len(players)
+    bracket_size = get_bracket_size(participant_count)
+    winners_count = bracket_size // 2
     if n_simulations < 1:
         raise ValueError("n_simulations must be positive.")
     members = [
@@ -85,14 +91,22 @@ def forecast_bracket_start(
     )
 
     opening_matches: list[BracketMatchForecast] = []
-    pairs = get_split_bracket_seed_pairs(8)
-    for side, prefix in (
-        (BRACKET_SIDE_WINNERS, "W1M"),
-        (BRACKET_SIDE_LOSERS, "L1M"),
-    ):
+    plan = build_bracket_plan(
+        participant_count,
+        ENTRY_SPLIT_BY_GROUP_SEED,
+    )
+    pairs = get_split_bracket_seed_pairs(bracket_size)
+    for side in (BRACKET_SIDE_WINNERS, BRACKET_SIDE_LOSERS):
+        first_round_codes = [
+            str(match["match_code"])
+            for match in plan
+            if (
+                str(match["bracket_side"]) == side
+                and int(match["round_number"]) == 1
+            )
+        ]
         for match_number, (first_seed, second_seed) in enumerate(
             pairs[side],
-            start=1,
         ):
             if second_seed > len(seeded_player_ids):
                 continue
@@ -100,7 +114,7 @@ def forecast_bracket_start(
             second = seeded_player_ids[second_seed - 1]
             opening_matches.append(
                 BracketMatchForecast(
-                    match_code=f"{prefix}{match_number}",
+                    match_code=first_round_codes[match_number],
                     player_1_id=first,
                     player_2_id=second,
                     player_1_win_probability=model.set_probability(
@@ -114,7 +128,10 @@ def forecast_bracket_start(
             )
 
     placement_counts = {
-        player.player_id: {placement: 0 for placement in range(1, 8)}
+        player.player_id: {
+            placement: 0
+            for placement in range(1, participant_count + 1)
+        }
         for player in players
     }
     grand_final_counts = {player.player_id: 0 for player in players}
@@ -148,7 +165,9 @@ def forecast_bracket_start(
             player_id=player_id,
             display_name=player_by_id[player_id].display_name,
             group_seed=seed,
-            starts_in=("winners" if seed <= 4 else "losers"),
+            starts_in=(
+                "winners" if seed <= winners_count else "losers"
+            ),
             placement_probabilities={
                 placement: count / denominator
                 for placement, count in placement_counts[player_id].items()

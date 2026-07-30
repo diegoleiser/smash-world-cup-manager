@@ -1327,7 +1327,7 @@ def render_tournament_manager(
                             )
 
                             if (
-                                len(draft["participants"]) == 7
+                                3 <= len(draft["participants"]) <= 32
                                 and len(draft_groups) == 1
                                 and not bracket_generated
                             ):
@@ -2080,7 +2080,7 @@ def render_tournament_manager(
             if (
                 draft["format_type"]
                 == tournament_manager.FORMAT_GROUP_STAGE
-                and len(draft["participants"]) == 7
+                and 3 <= len(draft["participants"]) <= 32
                 and len(draft_groups) == 1
                 and not draft_bracket_state["champion_name"]
             ):

@@ -129,6 +129,19 @@ def simulate_bracket_continuation(
             (str(route["target_code"]), int(route["target_slot"]) - 1),
             [],
         ).append(str(route["source_code"]))
+    for code, (winner, loser) in resolved.items():
+        for route in state.routes:
+            if str(route["source_code"]) != code:
+                continue
+            player_id = (
+                winner
+                if str(route["source_outcome"]) == "winner"
+                else loser
+            )
+            if player_id is not None:
+                slots[str(route["target_code"])][
+                    int(route["target_slot"]) - 1
+                ] = player_id
     played_sets: list[SimulatedBracketSet] = []
     elimination_groups: dict[int, list[str]] = {}
     for code, (_, loser) in resolved.items():
@@ -317,8 +330,12 @@ def forecast_bracket_continuation(
             and match.get("player_2_id") is not None
         )
     )
+    participant_count = len(state.seeded_player_ids)
     placement_counts = {
-        player_id: {placement: 0 for placement in range(1, 8)}
+        player_id: {
+            placement: 0
+            for placement in range(1, participant_count + 1)
+        }
         for player_id in state.seeded_player_ids
     }
     grand_final_counts = {

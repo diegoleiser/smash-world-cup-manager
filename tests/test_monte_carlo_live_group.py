@@ -253,7 +253,7 @@ class LiveGroupForecastTests(unittest.TestCase):
         self.assertEqual(status_by_player["c"], LOSERS_LOCKED)
         self.assertNotIn(SIDE_OPEN, status_by_player.values())
 
-    def test_draft_service_rejects_non_production_group_size(self) -> None:
+    def test_draft_service_derives_winners_count_from_bracket_size(self) -> None:
         state = LiveDraftGroupState(
             draft_id="draft",
             tournament_number=99,
@@ -262,20 +262,24 @@ class LiveGroupForecastTests(unittest.TestCase):
             players=tuple(self.players),
             matches=tuple(self.matches),
         )
-        with (
-            patch(
+        with patch(
                 "monte_carlo.live_service.load_live_draft_group_state",
                 return_value=state,
-            ),
-            self.assertRaisesRegex(ValueError, "exactly seven"),
-        ):
-            forecast_live_draft_group(
+            ):
+            forecast = forecast_live_draft_group(
                 "unused.db",
                 "draft",
                 self.model,
-                10,
+                20,
                 1,
             )
+        self.assertAlmostEqual(
+            sum(
+                player.winners_probability
+                for player in forecast.players
+            ),
+            2.0,
+        )
 
 
 class DayPosteriorTests(unittest.TestCase):
@@ -449,6 +453,38 @@ class BracketStartForecastTests(unittest.TestCase):
                 10,
                 1,
             )
+
+    def test_five_player_bracket_start_handles_byes(self) -> None:
+        players = self.players[:5]
+        player_ids = [player.player_id for player in players]
+        matches = [
+            LiveGroupMatch(
+                first,
+                second,
+                GROUP_MATCH_COMPLETED,
+                first,
+                2,
+                0,
+            )
+            for round_pairings in generate_round_robin_pairings(player_ids)
+            for first, second in round_pairings
+        ]
+        forecast = forecast_bracket_start(
+            players,
+            matches,
+            self.model,
+            20,
+            42,
+        )
+        self.assertEqual(len(forecast.players), 5)
+        self.assertAlmostEqual(
+            sum(player.title_probability for player in forecast.players),
+            1.0,
+        )
+        self.assertEqual(
+            sum(player.starts_in == "winners" for player in forecast.players),
+            4,
+        )
 
 
 if __name__ == "__main__":

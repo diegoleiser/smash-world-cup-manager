@@ -27,7 +27,10 @@ from tournament.bracket_constants import (  # noqa: E402
 )
 from tournament.bracket_matches import build_bracket_plan  # noqa: E402
 from tournament.bracket_routes import build_bracket_route_plan  # noqa: E402
-from tournament.bracket_seeding import get_split_bracket_seed_pairs  # noqa: E402
+from tournament.bracket_seeding import (  # noqa: E402
+    get_bracket_size,
+    get_split_bracket_seed_pairs,
+)
 
 
 class BracketContinuationTests(unittest.TestCase):
@@ -349,6 +352,111 @@ class BracketContinuationTests(unittest.TestCase):
                 if player.player_id != simulated.champion_id
             )
         )
+
+    def test_variable_bracket_sizes_continue_through_byes(self) -> None:
+        all_player_ids = tuple(f"v{seed}" for seed in range(1, 17))
+        model = CombinedModel(
+            self.model.config,
+            {
+                player_id: PlayerParameters(
+                    player_id,
+                    player_id,
+                    0.0,
+                )
+                for player_id in all_player_ids
+            },
+            {},
+        )
+        for participant_count in (3, 4, 5, 6, 8, 9, 12, 16):
+            with self.subTest(participant_count=participant_count):
+                player_ids = all_player_ids[:participant_count]
+                matches = [
+                    {
+                        **match,
+                        "player_1_id": None,
+                        "player_2_id": None,
+                        "winner_id": None,
+                        "status": (
+                            "inactive"
+                            if match["match_code"] == "GFR"
+                            else "waiting"
+                        ),
+                    }
+                    for match in build_bracket_plan(
+                        participant_count,
+                        ENTRY_SPLIT_BY_GROUP_SEED,
+                    )
+                ]
+                bracket_size = get_bracket_size(participant_count)
+                seeded = {
+                    seed: (
+                        player_ids[seed - 1]
+                        if seed <= participant_count
+                        else None
+                    )
+                    for seed in range(1, bracket_size + 1)
+                }
+                pairs = get_split_bracket_seed_pairs(bracket_size)
+                for side in (
+                    BRACKET_SIDE_WINNERS,
+                    BRACKET_SIDE_LOSERS,
+                ):
+                    first_round_matches = [
+                        match
+                        for match in matches
+                        if (
+                            match["bracket_side"] == side
+                            and int(match["round_number"]) == 1
+                        )
+                    ]
+                    for index, (first_seed, second_seed) in enumerate(
+                        pairs[side]
+                    ):
+                        match = first_round_matches[index]
+                        first = seeded[first_seed]
+                        second = seeded[second_seed]
+                        match["player_1_id"] = first
+                        match["player_2_id"] = second
+                        match["status"] = (
+                            "pending"
+                            if first is not None and second is not None
+                            else "bye"
+                        )
+                        if match["status"] == "bye":
+                            match["winner_id"] = first or second
+                state = BracketContinuationInput(
+                    matches=tuple(matches),
+                    routes=tuple(
+                        build_bracket_route_plan(
+                            participant_count,
+                            ENTRY_SPLIT_BY_GROUP_SEED,
+                        )
+                    ),
+                    seeded_player_ids=player_ids,
+                )
+                forecast = forecast_bracket_continuation(
+                    state,
+                    model,
+                    {
+                        player_id: 0.0
+                        for player_id in player_ids
+                    },
+                    5,
+                    participant_count,
+                )
+                self.assertEqual(len(forecast.players), participant_count)
+                self.assertAlmostEqual(
+                    sum(
+                        player.title_probability
+                        for player in forecast.players
+                    ),
+                    1.0,
+                )
+                for player in forecast.players:
+                    self.assertEqual(
+                        len(player.placement_probabilities),
+                        participant_count,
+                    )
 
 
 if __name__ == "__main__":
