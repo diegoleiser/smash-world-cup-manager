@@ -9,10 +9,11 @@ from datetime import datetime, timezone
 from monte_carlo.bracket_simulation import simulate_split_bracket
 from monte_carlo.group_simulation import SimulationPlayer, simulate_group
 from monte_carlo.model import CombinedModel
+from tournament.bracket_seeding import get_bracket_size
 
 
 TIEBREAK_VERSION = "group-tiebreak-v2"
-FORMAT_VERSION = "seven-player-split-de-v1"
+FORMAT_VERSION = "single-group-split-de-v2"
 
 
 @dataclass(frozen=True)
@@ -52,19 +53,21 @@ def simulate_pre_tournament(
     n_simulations: int,
     random_seed: int,
 ) -> SimulationResult:
-    """Simulate the current seven-player group plus split DE format."""
+    """Simulate one Round Robin group followed by split-entry DE."""
 
-    if len(players) != 7:
-        raise ValueError(
-            "The current production simulator requires exactly seven players."
-        )
+    participant_count = len(players)
+    bracket_size = get_bracket_size(participant_count)
+    winners_count = bracket_size // 2
     if n_simulations < 1:
         raise ValueError("n_simulations must be positive.")
     ordered_players = sorted(players, key=lambda player: player.initial_seed)
     if [player.initial_seed for player in ordered_players] != list(
-        range(1, 8)
+        range(1, participant_count + 1)
     ):
-        raise ValueError("Initial seeds must be exactly 1 through 7.")
+        raise ValueError(
+            "Initial seeds must be consecutive from 1 through "
+            f"{participant_count}."
+        )
 
     rng = random.Random(random_seed)
     player_by_id = {
@@ -72,12 +75,17 @@ def simulate_pre_tournament(
     }
     group_win_totals = {player_id: 0 for player_id in player_by_id}
     group_seed_counts = {
-        player_id: {seed: 0 for seed in range(1, 8)}
+        player_id: {
+            seed: 0 for seed in range(1, participant_count + 1)
+        }
         for player_id in player_by_id
     }
     winners_counts = {player_id: 0 for player_id in player_by_id}
     placement_counts = {
-        player_id: {placement: 0 for placement in range(1, 8)}
+        player_id: {
+            placement: 0
+            for placement in range(1, participant_count + 1)
+        }
         for player_id in player_by_id
     }
     grand_final_counts = {player_id: 0 for player_id in player_by_id}
@@ -94,7 +102,7 @@ def simulate_pre_tournament(
             group_win_totals[player_id] += int(row["sets_won"])
             group_seed = int(row["placement"])
             group_seed_counts[player_id][group_seed] += 1
-            if group_seed <= 4:
+            if group_seed <= winners_count:
                 winners_counts[player_id] += 1
 
         bracket = simulate_split_bracket(

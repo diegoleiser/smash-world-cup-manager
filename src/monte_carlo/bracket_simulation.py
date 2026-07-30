@@ -72,7 +72,7 @@ def simulate_split_bracket(
     slots: dict[str, list[str | None]] = {
         code: [None, None] for code in match_metadata
     }
-    resolved: dict[str, tuple[str, str | None]] = {}
+    resolved: dict[str, tuple[str | None, str | None]] = {}
     incoming: dict[tuple[str, int], list[str]] = {}
     for route in routes:
         incoming.setdefault(
@@ -90,15 +90,19 @@ def simulate_split_bracket(
         )
         for seed in range(1, bracket_size + 1)
     }
-    for side, prefix in (
-        (BRACKET_SIDE_WINNERS, "W1M"),
-        (BRACKET_SIDE_LOSERS, "L1M"),
-    ):
+    for side in (BRACKET_SIDE_WINNERS, BRACKET_SIDE_LOSERS):
+        first_round_codes = [
+            str(match["match_code"])
+            for match in plan
+            if (
+                str(match["bracket_side"]) == side
+                and int(match["round_number"]) == 1
+            )
+        ]
         for match_number, (first_seed, second_seed) in enumerate(
             pairs[side],
-            start=1,
         ):
-            slots[f"{prefix}{match_number}"] = [
+            slots[first_round_codes[match_number]] = [
                 seeded[first_seed],
                 seeded[second_seed],
             ]
@@ -143,6 +147,8 @@ def simulate_split_bracket(
                 continue
             player_1_id, player_2_id = slots[code]
             if player_1_id is None and player_2_id is None:
+                resolved[code] = (None, None)
+                progress = True
                 continue
             if player_1_id is None or player_2_id is None:
                 winner_id = player_1_id or player_2_id

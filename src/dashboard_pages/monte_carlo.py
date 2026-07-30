@@ -21,6 +21,7 @@ def _load_model_artifact(artifact_path: str):
 
 def _result_frame(result: SimulationResult) -> pd.DataFrame:
     rows = []
+    placements = range(1, len(result.players) + 1)
     for player in result.players:
         row: dict[str, Any] = {
             "Player": player.display_name,
@@ -32,7 +33,7 @@ def _result_frame(result: SimulationResult) -> pd.DataFrame:
                 f"P{placement}": (
                     player.placement_probabilities[placement] * 100
                 )
-                for placement in range(1, 8)
+                for placement in placements
             }
         )
         row["P(GF)"] = player.grand_final_probability * 100
@@ -66,15 +67,16 @@ def render_monte_carlo(
         )
         return
 
+    all_players = load_players(True)
     available_players = [
         player
-        for player in load_players(False)
+        for player in all_players
         if str(player["player_id"]) in artifact.model.players
     ]
     player_by_id = {
         str(player["player_id"]): player for player in available_players
     }
-    elo_rows = load_elo_ranking(False)
+    elo_rows = load_elo_ranking(True)
     elo_by_player_id = {
         str(row["player_id"]): float(row["elo"])
         for row in elo_rows
@@ -82,7 +84,10 @@ def render_monte_carlo(
     core_player_ids = [
         str(player["player_id"])
         for player in available_players
-        if int(player.get("core_player", 0)) == 1
+        if (
+            int(player.get("core_player", 0)) == 1
+            and int(player.get("active", 0)) == 1
+        )
     ]
     default_player_ids = sorted(
         core_player_ids,
@@ -97,11 +102,16 @@ def render_monte_carlo(
         default=default_player_ids,
         format_func=lambda player_id: str(
             player_by_id[player_id]["display_name"]
+        ) + (
+            ""
+            if int(player_by_id[player_id].get("active", 0)) == 1
+            else " (inactive)"
         ),
-        max_selections=7,
+        max_selections=min(32, len(player_by_id)),
     )
-    if len(selected_ids) != 7:
-        st.warning("Select exactly seven participants.")
+    participant_count = len(selected_ids)
+    if not 3 <= participant_count <= 32:
+        st.warning("Select between 3 and 32 participants.")
         return
 
     seed_frame = pd.DataFrame(
@@ -122,7 +132,7 @@ def render_monte_carlo(
             "Player ID": None,
             "Seed": st.column_config.NumberColumn(
                 min_value=1,
-                max_value=7,
+                max_value=participant_count,
                 step=1,
                 required=True,
             ),
@@ -131,9 +141,21 @@ def render_monte_carlo(
         key="monte_carlo_seeds",
     )
     seeds = [int(value) for value in edited_seeds["Seed"]]
-    if sorted(seeds) != list(range(1, 8)):
-        st.error("Use every Seed from 1 through 7 exactly once.")
+    if sorted(seeds) != list(range(1, participant_count + 1)):
+        st.error(
+            "Use every Seed from 1 through "
+            f"{participant_count} exactly once."
+        )
         return
+    simulation_configuration = tuple(
+        sorted(
+            (
+                str(row["Player ID"]),
+                int(row["Seed"]),
+            )
+            for _, row in edited_seeds.iterrows()
+        )
+    )
 
     controls = st.columns(2)
     simulation_count = controls[0].selectbox(
@@ -178,15 +200,22 @@ def render_monte_carlo(
                     random_seed,
                 )
             )
+            st.session_state["monte_carlo_result_configuration"] = (
+                simulation_configuration
+            )
 
     result = st.session_state.get("monte_carlo_result")
-    if not isinstance(result, SimulationResult):
+    if (
+        not isinstance(result, SimulationResult)
+        or st.session_state.get("monte_carlo_result_configuration")
+        != simulation_configuration
+    ):
         return
     frame = _result_frame(result)
     st.subheader("Tournament Forecast")
     percentage_columns = [
         "P(Winners)",
-        *(f"P{placement}" for placement in range(1, 8)),
+        *(f"P{placement}" for placement in range(1, participant_count + 1)),
         "P(GF)",
         "P(Title)",
     ]
@@ -200,9 +229,9 @@ def render_monte_carlo(
         },
     )
     st.caption(
-        "The current Double Elimination convention awards two tied 5th "
-        "places, so P6 is always 0%. Neutral-Day matchup probabilities and "
-        "tournament predictive probabilities are different concepts."
+        "Double Elimination can award tied placements; skipped placement "
+        "numbers therefore remain at 0%. Neutral-Day matchup probabilities "
+        "and tournament predictive probabilities are different concepts."
     )
     st.metric(
         "Grand Final Reset Probability",

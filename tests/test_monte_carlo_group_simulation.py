@@ -23,6 +23,7 @@ from monte_carlo.group_simulation import (  # noqa: E402
 from monte_carlo.model import CombinedModel, PlayerParameters  # noqa: E402
 from monte_carlo.scorelines import simulate_scoreline  # noqa: E402
 from monte_carlo.simulation import simulate_pre_tournament  # noqa: E402
+from tournament.bracket_seeding import get_bracket_size  # noqa: E402
 
 
 class DayPerformanceTests(unittest.TestCase):
@@ -213,6 +214,41 @@ class BracketSimulationTests(unittest.TestCase):
         )
         self.assertEqual(first, second)
 
+    def test_split_bracket_handles_byes_across_supported_sizes(self) -> None:
+        player_ids = [f"p{seed}" for seed in range(1, 21)]
+        model = CombinedModel(
+            self.model.config,
+            {
+                player_id: PlayerParameters(
+                    player_id,
+                    player_id.upper(),
+                    0.0,
+                )
+                for player_id in player_ids
+            },
+            {},
+        )
+        for participant_count in range(3, 21):
+            with self.subTest(participant_count=participant_count):
+                selected_ids = player_ids[:participant_count]
+                result = simulate_split_bracket(
+                    selected_ids,
+                    model,
+                    {
+                        player_id: 0.0
+                        for player_id in selected_ids
+                    },
+                    random.Random(1000 + participant_count),
+                )
+                self.assertEqual(
+                    set(result.placements),
+                    set(selected_ids),
+                )
+                self.assertEqual(
+                    result.placements[result.champion_id],
+                    1,
+                )
+
 
 class PreTournamentSimulationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -314,6 +350,63 @@ class PreTournamentSimulationTests(unittest.TestCase):
                 ),
                 expected,
             )
+
+    def test_variable_participant_counts_preserve_distributions(self) -> None:
+        player_ids = [f"v{seed}" for seed in range(1, 17)]
+        model = CombinedModel(
+            self.model.config,
+            {
+                player_id: PlayerParameters(
+                    player_id,
+                    player_id.upper(),
+                    0.0,
+                )
+                for player_id in player_ids
+            },
+            {},
+        )
+        for participant_count in (3, 4, 5, 6, 8, 9, 12, 16):
+            with self.subTest(participant_count=participant_count):
+                players = [
+                    SimulationPlayer(
+                        player_id=player_id,
+                        display_name=player_id.upper(),
+                        initial_seed=seed,
+                        initial_elo=1000.0,
+                    )
+                    for seed, player_id in enumerate(
+                        player_ids[:participant_count],
+                        start=1,
+                    )
+                ]
+                result = simulate_pre_tournament(
+                    players,
+                    model,
+                    n_simulations=5,
+                    random_seed=participant_count,
+                )
+                self.assertEqual(len(result.players), participant_count)
+                self.assertAlmostEqual(
+                    sum(
+                        player.title_probability
+                        for player in result.players
+                    ),
+                    1.0,
+                )
+                self.assertAlmostEqual(
+                    sum(
+                        player.grand_final_probability
+                        for player in result.players
+                    ),
+                    2.0,
+                )
+                self.assertAlmostEqual(
+                    sum(
+                        player.winners_probability
+                        for player in result.players
+                    ),
+                    get_bracket_size(participant_count) // 2,
+                )
 
 
 if __name__ == "__main__":
