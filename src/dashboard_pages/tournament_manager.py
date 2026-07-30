@@ -513,9 +513,7 @@ def _render_group_control_center(
                     st.markdown(
                         """
                         <style>
-                        div[data-testid="stVerticalBlockBorderWrapper"]:has(
-                            .other-playable-sets-marker
-                        ) button {
+                        [class*="st-key-control_choose_group_"] button {
                             min-height: 4.35rem;
                             padding: 0.65rem 0.9rem;
                             text-align: left;
@@ -524,36 +522,31 @@ def _render_group_control_center(
                                 box-shadow 0.15s ease,
                                 transform 0.15s ease;
                         }
-                        div[data-testid="stVerticalBlockBorderWrapper"]:has(
-                            .other-playable-sets-marker
-                        ) button:hover {
-                            border-color: var(--st-primary-color);
+                        [class*="st-key-control_choose_group_"] button:hover {
+                            border-color:
+                                var(--primary-color, rgb(255, 75, 75));
                             box-shadow:
                                 0 2px 5px rgba(0, 0, 0, 0.32),
                                 0 8px 24px rgba(59, 130, 246, 0.18);
                             transform: translateY(-1px);
                         }
-                        div[data-testid="stVerticalBlockBorderWrapper"]:has(
-                            .other-playable-sets-marker
-                        ) button:focus-visible {
-                            border-color: var(--st-primary-color);
+                        [class*="st-key-control_choose_group_"]
+                        button:focus-visible {
+                            border-color:
+                                var(--primary-color, rgb(255, 75, 75));
                             box-shadow:
                                 0 0 0 2px rgba(96, 165, 250, 0.22),
                                 0 8px 24px rgba(59, 130, 246, 0.18);
                             transform: translateY(-1px);
                         }
-                        div[data-testid="stVerticalBlockBorderWrapper"]:has(
-                            .other-playable-sets-marker
-                        ) button p {
+                        [class*="st-key-control_choose_group_"] button p {
                             width: 100%;
                             color: rgba(250, 250, 250, 0.58);
                             font-size: 0.78rem;
                             line-height: 1.25;
                             text-align: left;
                         }
-                        div[data-testid="stVerticalBlockBorderWrapper"]:has(
-                            .other-playable-sets-marker
-                        ) button strong {
+                        [class*="st-key-control_choose_group_"] button strong {
                             display: block;
                             margin-bottom: 0.2rem;
                             color: rgb(250, 250, 250);
@@ -561,7 +554,6 @@ def _render_group_control_center(
                             line-height: 1.2;
                         }
                         </style>
-                        <div class="other-playable-sets-marker"></div>
                         """,
                         unsafe_allow_html=True,
                     )
