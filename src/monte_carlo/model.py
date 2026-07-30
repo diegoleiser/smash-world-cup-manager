@@ -36,6 +36,28 @@ class CombinedModel:
         self.players = MappingProxyType(dict(players))
         self.h2h_effects = MappingProxyType(dict(h2h_effects))
 
+    def with_neutral_players(
+        self,
+        player_names: Mapping[str, str],
+    ) -> "CombinedModel":
+        """Return a runtime copy with zero-effect priors for new players."""
+
+        players = dict(self.players)
+        for player_id, display_name in player_names.items():
+            if player_id in players:
+                continue
+            players[player_id] = PlayerParameters(
+                player_id=player_id,
+                display_name=display_name,
+                skill_log_odds=0.0,
+                clutch_log_odds=0.0,
+            )
+        return CombinedModel(
+            self.config,
+            players,
+            self.h2h_effects,
+        )
+
     def _player(self, player_id: str) -> PlayerParameters:
         try:
             return self.players[player_id]

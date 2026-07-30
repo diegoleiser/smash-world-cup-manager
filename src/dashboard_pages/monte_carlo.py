@@ -67,12 +67,7 @@ def render_monte_carlo(
         )
         return
 
-    all_players = load_players(True)
-    available_players = [
-        player
-        for player in all_players
-        if str(player["player_id"]) in artifact.model.players
-    ]
+    available_players = load_players(True)
     player_by_id = {
         str(player["player_id"]): player for player in available_players
     }
@@ -100,12 +95,18 @@ def render_monte_carlo(
         "Participants",
         options=list(player_by_id),
         default=default_player_ids,
-        format_func=lambda player_id: str(
-            player_by_id[player_id]["display_name"]
-        ) + (
-            ""
-            if int(player_by_id[player_id].get("active", 0)) == 1
-            else " (inactive)"
+        format_func=lambda player_id: (
+            str(player_by_id[player_id]["display_name"])
+            + (
+                " (inactive)"
+                if int(player_by_id[player_id].get("active", 0)) != 1
+                else ""
+            )
+            + (
+                " (neutral prior)"
+                if player_id not in artifact.model.players
+                else ""
+            )
         ),
         max_selections=min(32, len(player_by_id)),
     )
@@ -113,6 +114,20 @@ def render_monte_carlo(
     if not 3 <= participant_count <= 32:
         st.warning("Select between 3 and 32 participants.")
         return
+    neutral_player_ids = [
+        player_id
+        for player_id in selected_ids
+        if player_id not in artifact.model.players
+    ]
+    if neutral_player_ids:
+        neutral_names = ", ".join(
+            str(player_by_id[player_id]["display_name"])
+            for player_id in neutral_player_ids
+        )
+        st.info(
+            f"Neutral model prior: {neutral_names}. New players start at "
+            "the model baseline with no H2H or Clutch effect."
+        )
 
     seed_frame = pd.DataFrame(
         [
@@ -179,6 +194,14 @@ def render_monte_carlo(
     )
 
     if st.button("Run Simulation", type="primary"):
+        simulation_model = artifact.model.with_neutral_players(
+            {
+                player_id: str(
+                    player_by_id[player_id]["display_name"]
+                )
+                for player_id in neutral_player_ids
+            }
+        )
         simulation_players = [
             SimulationPlayer(
                 player_id=str(row["Player ID"]),
@@ -195,7 +218,7 @@ def render_monte_carlo(
             st.session_state["monte_carlo_result"] = (
                 simulate_pre_tournament(
                     simulation_players,
-                    artifact.model,
+                    simulation_model,
                     int(simulation_count),
                     random_seed,
                 )

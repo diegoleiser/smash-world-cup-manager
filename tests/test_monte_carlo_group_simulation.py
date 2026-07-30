@@ -326,6 +326,35 @@ class PreTournamentSimulationTests(unittest.TestCase):
                 1.0,
             )
 
+    def test_neutral_new_player_can_enter_tournament(self) -> None:
+        model = self.model.with_neutral_players({"new": "New Player"})
+        players = [
+            *self.players[:-1],
+            SimulationPlayer(
+                player_id="new",
+                display_name="New Player",
+                initial_seed=7,
+                initial_elo=1000.0,
+            ),
+        ]
+        result = simulate_pre_tournament(
+            players,
+            model,
+            n_simulations=20,
+            random_seed=88,
+        )
+        by_player_id = {
+            player.player_id: player for player in result.players
+        }
+        self.assertIn("new", by_player_id)
+        self.assertAlmostEqual(
+            sum(
+                player.title_probability
+                for player in result.players
+            ),
+            1.0,
+        )
+
     def test_current_placement_convention_preserves_ties(self) -> None:
         result = simulate_pre_tournament(
             self.players,

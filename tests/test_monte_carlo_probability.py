@@ -101,6 +101,26 @@ class ProbabilityCoreTests(unittest.TestCase):
             math.isclose(model.set_probability("a", "b"), 0.995)
         )
 
+    def test_neutral_runtime_player_does_not_mutate_artifact_model(self) -> None:
+        model = CombinedModel(
+            self.config,
+            {
+                "a": PlayerParameters("a", "Alpha", 0.0),
+            },
+            {},
+        )
+        extended = model.with_neutral_players({"new": "New Player"})
+        self.assertNotIn("new", model.players)
+        self.assertIn("new", extended.players)
+        self.assertEqual(
+            extended.players["new"],
+            PlayerParameters("new", "New Player", 0.0, 0.0),
+        )
+        self.assertAlmostEqual(
+            extended.set_probability("a", "new"),
+            0.5,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
