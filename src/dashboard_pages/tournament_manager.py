@@ -508,19 +508,58 @@ def _render_group_control_center(
                     for label in option_by_label
                     if label != selected_label
                 ]
-                visible_alternatives = alternative_labels[:5]
+                visible_alternatives = alternative_labels[:4]
                 with st.container(border=True, height=card_height):
-                    st.caption(
-                        "Choose another currently open Group Set."
+                    st.markdown(
+                        """
+                        <style>
+                        div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                            .other-playable-sets-marker
+                        ) button {
+                            min-height: 4.35rem;
+                            padding: 0.65rem 0.9rem;
+                            text-align: left;
+                            transition:
+                                background-color 120ms ease,
+                                border-color 120ms ease;
+                        }
+                        div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                            .other-playable-sets-marker
+                        ) button:hover {
+                            background-color: rgba(255, 75, 75, 0.08);
+                            border-color: rgb(255, 75, 75);
+                        }
+                        div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                            .other-playable-sets-marker
+                        ) button p {
+                            width: 100%;
+                            color: rgba(250, 250, 250, 0.58);
+                            font-size: 0.78rem;
+                            line-height: 1.25;
+                            text-align: left;
+                        }
+                        div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                            .other-playable-sets-marker
+                        ) button strong {
+                            display: block;
+                            margin-bottom: 0.2rem;
+                            color: rgb(250, 250, 250);
+                            font-size: 1.08rem;
+                            line-height: 1.2;
+                        }
+                        </style>
+                        <div class="other-playable-sets-marker"></div>
+                        """,
+                        unsafe_allow_html=True,
                     )
                     for label in visible_alternatives:
                         match = option_by_label[label]
                         if st.button(
                             (
-                                f"{match['player_1']} vs "
-                                f"{match['player_2']}  ·  "
-                                f"{match['group_name']}, "
-                                f"Round {match['round_number']}"
+                                f"**{match['player_1']}  vs  "
+                                f"{match['player_2']}**  \n"
+                                f"{match['group_name']} · "
+                                f"Round {match['round_number']}  →"
                             ),
                             key=(
                                 "control_choose_group_"
@@ -535,8 +574,7 @@ def _render_group_control_center(
                     )
                     if remaining_count:
                         st.caption(
-                            f"+ {remaining_count} more open Sets "
-                            "under All Sets"
+                            f"{remaining_count} more under All Sets"
                         )
     else:
         st.success("All Group Sets are decided.")
