@@ -1328,7 +1328,7 @@ def render_tournament_manager(
 
                             if (
                                 3 <= len(draft["participants"]) <= 32
-                                and len(draft_groups) == 1
+                                and draft_groups
                                 and not bracket_generated
                             ):
                                 _render_live_group_forecast(
@@ -2081,7 +2081,7 @@ def render_tournament_manager(
                 draft["format_type"]
                 == tournament_manager.FORMAT_GROUP_STAGE
                 and 3 <= len(draft["participants"]) <= 32
-                and len(draft_groups) == 1
+                and draft_groups
                 and not draft_bracket_state["champion_name"]
             ):
                 _render_live_bracket_forecast(

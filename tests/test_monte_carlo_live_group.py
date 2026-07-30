@@ -263,9 +263,9 @@ class LiveGroupForecastTests(unittest.TestCase):
             matches=tuple(self.matches),
         )
         with patch(
-                "monte_carlo.live_service.load_live_draft_group_state",
-                return_value=state,
-            ):
+            "monte_carlo.live_service.load_live_draft_group_states",
+            return_value=(state,),
+        ):
             forecast = forecast_live_draft_group(
                 "unused.db",
                 "draft",

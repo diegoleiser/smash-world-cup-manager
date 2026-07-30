@@ -19,6 +19,10 @@ from monte_carlo.live_group import (
     LiveGroupMatch,
     forecast_live_group,
 )
+from monte_carlo.live_multi_group import (
+    LiveGroupPool,
+    forecast_live_groups,
+)
 from monte_carlo.model import CombinedModel
 from tournament.bracket_constants import ENTRY_SPLIT_BY_GROUP_SEED
 from tournament.bracket_seeding import get_bracket_size
@@ -39,11 +43,11 @@ class LiveDraftGroupState:
     matches: tuple[LiveGroupMatch, ...]
 
 
-def load_live_draft_group_state(
+def load_live_draft_group_states(
     db_path: str | Path,
     draft_id: str,
-) -> LiveDraftGroupState:
-    """Load the current single-group production draft without modifying it."""
+) -> tuple[LiveDraftGroupState, ...]:
+    """Load every draft group without modifying tournament state."""
 
     elo_by_player_id = {
         str(row["player_id"]): float(row["elo"])
@@ -75,86 +79,104 @@ def load_live_draft_group_state(
             """,
             (draft_id,),
         ).fetchall()
-        if len(groups) != 1:
-            raise ValueError(
-                "The current Live Group forecast requires exactly one group."
+        if not groups:
+            raise ValueError("Create tournament groups before forecasting.")
+        states = []
+        for group in groups:
+            group_id = str(group["group_id"])
+            member_rows = connection.execute(
+                """
+                SELECT
+                    gm.player_id,
+                    p.display_name,
+                    dp.manual_seed
+                FROM tournament_draft_group_members AS gm
+                JOIN players AS p ON p.player_id = gm.player_id
+                JOIN tournament_draft_participants AS dp
+                  ON dp.draft_id = ?
+                 AND dp.player_id = gm.player_id
+                WHERE gm.group_id = ?
+                ORDER BY dp.manual_seed, p.display_name COLLATE NOCASE
+                """,
+                (draft_id, group_id),
+            ).fetchall()
+            match_rows = connection.execute(
+                """
+                SELECT
+                    player_1_id,
+                    player_2_id,
+                    status,
+                    winner_id,
+                    player_1_score,
+                    player_2_score
+                FROM tournament_draft_group_matches
+                WHERE group_id = ?
+                ORDER BY round_number, match_number
+                """,
+                (group_id,),
+            ).fetchall()
+            if not member_rows:
+                raise ValueError("A draft group has no members.")
+            if not match_rows:
+                raise ValueError(
+                    "Generate Group Stage Sets before forecasting."
+                )
+            states.append(
+                LiveDraftGroupState(
+                    draft_id=draft_id,
+                    tournament_number=int(draft["tournament_number"]),
+                    group_id=group_id,
+                    group_name=str(group["group_name"]),
+                    players=tuple(
+                        SimulationPlayer(
+                            player_id=str(row["player_id"]),
+                            display_name=str(row["display_name"]),
+                            initial_seed=int(row["manual_seed"]),
+                            initial_elo=elo_by_player_id.get(
+                                str(row["player_id"]),
+                                1000.0,
+                            ),
+                        )
+                        for row in member_rows
+                    ),
+                    matches=tuple(
+                        LiveGroupMatch(
+                            player_1_id=str(row["player_1_id"]),
+                            player_2_id=str(row["player_2_id"]),
+                            status=str(row["status"]),
+                            winner_id=(
+                                str(row["winner_id"])
+                                if row["winner_id"] is not None
+                                else None
+                            ),
+                            player_1_score=(
+                                int(row["player_1_score"])
+                                if row["player_1_score"] is not None
+                                else None
+                            ),
+                            player_2_score=(
+                                int(row["player_2_score"])
+                                if row["player_2_score"] is not None
+                                else None
+                            ),
+                        )
+                        for row in match_rows
+                    ),
+                )
             )
-        group_id = str(groups[0]["group_id"])
-        member_rows = connection.execute(
-            """
-            SELECT
-                gm.player_id,
-                p.display_name,
-                dp.manual_seed
-            FROM tournament_draft_group_members AS gm
-            JOIN players AS p ON p.player_id = gm.player_id
-            JOIN tournament_draft_participants AS dp
-              ON dp.draft_id = ?
-             AND dp.player_id = gm.player_id
-            WHERE gm.group_id = ?
-            ORDER BY dp.manual_seed, p.display_name COLLATE NOCASE
-            """,
-            (draft_id, group_id),
-        ).fetchall()
-        match_rows = connection.execute(
-            """
-            SELECT
-                player_1_id,
-                player_2_id,
-                status,
-                winner_id,
-                player_1_score,
-                player_2_score
-            FROM tournament_draft_group_matches
-            WHERE group_id = ?
-            ORDER BY round_number, match_number
-            """,
-            (group_id,),
-        ).fetchall()
-    if not member_rows:
-        raise ValueError("The draft group has no members.")
-    if not match_rows:
-        raise ValueError("Generate Group Stage Sets before forecasting.")
-    players = tuple(
-        SimulationPlayer(
-            player_id=str(row["player_id"]),
-            display_name=str(row["display_name"]),
-            initial_seed=int(row["manual_seed"]),
-            initial_elo=elo_by_player_id.get(str(row["player_id"]), 1000.0),
-        )
-        for row in member_rows
-    )
-    matches = tuple(
-        LiveGroupMatch(
-            player_1_id=str(row["player_1_id"]),
-            player_2_id=str(row["player_2_id"]),
-            status=str(row["status"]),
-            winner_id=(
-                str(row["winner_id"])
-                if row["winner_id"] is not None
-                else None
-            ),
-            player_1_score=(
-                int(row["player_1_score"])
-                if row["player_1_score"] is not None
-                else None
-            ),
-            player_2_score=(
-                int(row["player_2_score"])
-                if row["player_2_score"] is not None
-                else None
-            ),
-        )
-        for row in match_rows
-    )
-    return LiveDraftGroupState(
-        draft_id=draft_id,
-        tournament_number=int(draft["tournament_number"]),
-        group_id=group_id,
-        group_name=str(groups[0]["group_name"]),
-        players=players,
-        matches=matches,
-    )
+    return tuple(states)
+
+
+def load_live_draft_group_state(
+    db_path: str | Path,
+    draft_id: str,
+) -> LiveDraftGroupState:
+    """Load one group for callers that explicitly require a single group."""
+
+    states = load_live_draft_group_states(db_path, draft_id)
+    if len(states) != 1:
+        raise ValueError("This operation requires exactly one group.")
+    return states[0]
 
 
 def forecast_live_draft_group(
@@ -166,14 +188,31 @@ def forecast_live_draft_group(
 ) -> LiveGroupForecast:
     """Load and forecast the current standard single-group draft."""
 
-    state = load_live_draft_group_state(db_path, draft_id)
-    bracket_size = get_bracket_size(len(state.players))
+    states = load_live_draft_group_states(db_path, draft_id)
+    players = [player for state in states for player in state.players]
     model = model.with_neutral_players(
         {
             player.player_id: player.display_name
-            for player in state.players
+            for player in players
         }
     )
+    if len(states) > 1:
+        return forecast_live_groups(
+            [
+                LiveGroupPool(
+                    group_id=state.group_id,
+                    group_name=state.group_name,
+                    players=state.players,
+                    matches=state.matches,
+                )
+                for state in states
+            ],
+            model,
+            n_simulations,
+            random_seed,
+        )
+    state = states[0]
+    bracket_size = get_bracket_size(len(state.players))
     return forecast_live_group(
         list(state.players),
         list(state.matches),
@@ -223,16 +262,22 @@ def forecast_live_draft_bracket(
 ) -> BracketContinuationForecast:
     """Forecast a persisted partial bracket with frozen Group Day values."""
 
-    group_state = load_live_draft_group_state(db_path, draft_id)
+    group_states = load_live_draft_group_states(db_path, draft_id)
+    players = [
+        player for state in group_states for player in state.players
+    ]
+    matches = [
+        match for state in group_states for match in state.matches
+    ]
     model = model.with_neutral_players(
         {
             player.player_id: player.display_name
-            for player in group_state.players
+            for player in players
         }
     )
     day_posterior = estimate_group_day(
-        [player.player_id for player in group_state.players],
-        group_state.matches,
+        [player.player_id for player in players],
+        matches,
         model,
     )
     bracket_state = load_draft_bracket_continuation(db_path, draft_id)
