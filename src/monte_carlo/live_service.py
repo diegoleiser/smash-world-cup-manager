@@ -26,7 +26,10 @@ from monte_carlo.live_multi_group import (
 from monte_carlo.model import CombinedModel
 from tournament.bracket_constants import ENTRY_SPLIT_BY_GROUP_SEED
 from tournament.bracket_seeding import get_bracket_size
-from tournament.drafts import FORMAT_GROUP_STAGE
+from tournament.drafts import (
+    FORMAT_DOUBLE_ELIMINATION,
+    FORMAT_GROUP_STAGE,
+)
 from tournament.bracket_generation import (
     get_draft_bracket_matches,
     get_draft_bracket_routes,
@@ -260,31 +263,61 @@ def forecast_live_draft_bracket(
     n_simulations: int,
     random_seed: int,
 ) -> BracketContinuationForecast:
-    """Forecast a persisted partial bracket with frozen Group Day values."""
+    """Forecast a persisted bracket with Group Day or neutral Day values."""
 
-    group_states = load_live_draft_group_states(db_path, draft_id)
-    players = [
-        player for state in group_states for player in state.players
-    ]
-    matches = [
-        match for state in group_states for match in state.matches
-    ]
-    model = model.with_neutral_players(
-        {
-            player.player_id: player.display_name
-            for player in players
-        }
-    )
-    day_posterior = estimate_group_day(
-        [player.player_id for player in players],
-        matches,
-        model,
-    )
     bracket_state = load_draft_bracket_continuation(db_path, draft_id)
+    with open_sqlite_connection(db_path) as connection:
+        draft = connection.execute(
+            """
+            SELECT format_type
+            FROM tournament_drafts
+            WHERE draft_id = ?
+            """,
+            (draft_id,),
+        ).fetchone()
+        if draft is None:
+            raise ValueError(f"Tournament draft not found: {draft_id}")
+        player_rows = connection.execute(
+            """
+            SELECT dp.player_id, p.display_name
+            FROM tournament_draft_participants AS dp
+            JOIN players AS p ON p.player_id = dp.player_id
+            WHERE dp.draft_id = ?
+              AND dp.bracket_seed IS NOT NULL
+            ORDER BY dp.bracket_seed
+            """,
+            (draft_id,),
+        ).fetchall()
+    player_names = {
+        str(row["player_id"]): str(row["display_name"])
+        for row in player_rows
+    }
+    model = model.with_neutral_players(player_names)
+    format_type = str(draft["format_type"])
+    if format_type == FORMAT_GROUP_STAGE:
+        group_states = load_live_draft_group_states(db_path, draft_id)
+        players = [
+            player for state in group_states for player in state.players
+        ]
+        matches = [
+            match for state in group_states for match in state.matches
+        ]
+        day_values = estimate_group_day(
+            [player.player_id for player in players],
+            matches,
+            model,
+        ).values
+    elif format_type == FORMAT_DOUBLE_ELIMINATION:
+        day_values = {
+            player_id: 0.0
+            for player_id in bracket_state.seeded_player_ids
+        }
+    else:
+        raise ValueError(f"Unsupported tournament format: {format_type}")
     return forecast_bracket_continuation(
         bracket_state,
         model,
-        day_posterior.values,
+        day_values,
         n_simulations,
         random_seed,
     )

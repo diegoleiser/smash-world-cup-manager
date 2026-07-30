@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import random
+import sqlite3
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -20,14 +23,17 @@ from monte_carlo.bracket_continuation import (  # noqa: E402
 )
 from monte_carlo.config import load_model_config  # noqa: E402
 from monte_carlo.model import CombinedModel, PlayerParameters  # noqa: E402
+from monte_carlo.live_service import forecast_live_draft_bracket  # noqa: E402
 from tournament.bracket_constants import (  # noqa: E402
     BRACKET_SIDE_LOSERS,
     BRACKET_SIDE_WINNERS,
+    ENTRY_ALL_WINNERS,
     ENTRY_SPLIT_BY_GROUP_SEED,
 )
 from tournament.bracket_matches import build_bracket_plan  # noqa: E402
 from tournament.bracket_routes import build_bracket_route_plan  # noqa: E402
 from tournament.bracket_seeding import (  # noqa: E402
+    get_first_round_seed_pairs,
     get_bracket_size,
     get_split_bracket_seed_pairs,
 )
@@ -457,6 +463,186 @@ class BracketContinuationTests(unittest.TestCase):
                         len(player.placement_probabilities),
                         participant_count,
                     )
+
+    def test_all_winners_brackets_continue_through_byes(self) -> None:
+        all_player_ids = tuple(f"a{seed}" for seed in range(1, 17))
+        model = CombinedModel(
+            self.model.config,
+            {
+                player_id: PlayerParameters(
+                    player_id,
+                    player_id,
+                    0.0,
+                )
+                for player_id in all_player_ids
+            },
+            {},
+        )
+        for participant_count in (3, 4, 5, 8, 9, 16):
+            with self.subTest(participant_count=participant_count):
+                player_ids = all_player_ids[:participant_count]
+                matches = [
+                    {
+                        **match,
+                        "player_1_id": None,
+                        "player_2_id": None,
+                        "winner_id": None,
+                        "status": (
+                            "inactive"
+                            if match["match_code"] == "GFR"
+                            else "waiting"
+                        ),
+                    }
+                    for match in build_bracket_plan(
+                        participant_count,
+                        ENTRY_ALL_WINNERS,
+                    )
+                ]
+                bracket_size = get_bracket_size(participant_count)
+                first_round_matches = [
+                    match
+                    for match in matches
+                    if (
+                        match["bracket_side"] == BRACKET_SIDE_WINNERS
+                        and int(match["round_number"]) == 1
+                    )
+                ]
+                for index, (first_seed, second_seed) in enumerate(
+                    get_first_round_seed_pairs(bracket_size)
+                ):
+                    first = (
+                        player_ids[first_seed - 1]
+                        if first_seed <= participant_count
+                        else None
+                    )
+                    second = (
+                        player_ids[second_seed - 1]
+                        if second_seed <= participant_count
+                        else None
+                    )
+                    match = first_round_matches[index]
+                    match["player_1_id"] = first
+                    match["player_2_id"] = second
+                    match["status"] = (
+                        "pending"
+                        if first is not None and second is not None
+                        else "bye"
+                    )
+                    if match["status"] == "bye":
+                        match["winner_id"] = first or second
+                state = BracketContinuationInput(
+                    matches=tuple(matches),
+                    routes=tuple(
+                        build_bracket_route_plan(
+                            participant_count,
+                            ENTRY_ALL_WINNERS,
+                        )
+                    ),
+                    seeded_player_ids=player_ids,
+                )
+                forecast = forecast_bracket_continuation(
+                    state,
+                    model,
+                    {
+                        player_id: 0.0
+                        for player_id in player_ids
+                    },
+                    5,
+                    100 + participant_count,
+                )
+                self.assertEqual(len(forecast.players), participant_count)
+                self.assertAlmostEqual(
+                    sum(
+                        player.title_probability
+                        for player in forecast.players
+                    ),
+                    1.0,
+                )
+
+    def test_double_elimination_draft_uses_neutral_day_values(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "draft.db"
+            with sqlite3.connect(db_path) as connection:
+                connection.executescript(
+                    """
+                    CREATE TABLE tournament_drafts (
+                        draft_id TEXT PRIMARY KEY,
+                        format_type TEXT NOT NULL
+                    );
+                    CREATE TABLE players (
+                        player_id TEXT PRIMARY KEY,
+                        display_name TEXT NOT NULL
+                    );
+                    CREATE TABLE tournament_draft_participants (
+                        draft_id TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        bracket_seed INTEGER
+                    );
+                    """
+                )
+                connection.execute(
+                    "INSERT INTO tournament_drafts VALUES (?, ?)",
+                    ("draft", "double_elimination"),
+                )
+                for seed, player_id in enumerate(("p1", "p2", "new"), 1):
+                    connection.execute(
+                        "INSERT INTO players VALUES (?, ?)",
+                        (player_id, player_id.upper()),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO tournament_draft_participants
+                        VALUES (?, ?, ?)
+                        """,
+                        ("draft", player_id, seed),
+                    )
+            state = BracketContinuationInput(
+                matches=(),
+                routes=(),
+                seeded_player_ids=("p1", "p2", "new"),
+            )
+            model = CombinedModel(
+                self.model.config,
+                {
+                    player_id: PlayerParameters(
+                        player_id,
+                        player_id,
+                        0.0,
+                    )
+                    for player_id in ("p1", "p2")
+                },
+                {},
+            )
+            sentinel = object()
+            with (
+                patch(
+                    "monte_carlo.live_service."
+                    "load_draft_bracket_continuation",
+                    return_value=state,
+                ),
+                patch(
+                    "monte_carlo.live_service."
+                    "forecast_bracket_continuation",
+                    return_value=sentinel,
+                ) as forecast_mock,
+            ):
+                result = forecast_live_draft_bracket(
+                    db_path,
+                    "draft",
+                    model,
+                    10,
+                    4,
+                )
+            self.assertIs(result, sentinel)
+            called_state, called_model, day_values, _, _ = (
+                forecast_mock.call_args.args
+            )
+            self.assertIs(called_state, state)
+            self.assertIn("new", called_model.players)
+            self.assertEqual(
+                day_values,
+                {"p1": 0.0, "p2": 0.0, "new": 0.0},
+            )
 
 
 if __name__ == "__main__":

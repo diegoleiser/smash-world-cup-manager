@@ -224,8 +224,9 @@ def _render_live_bracket_forecast(
         },
     )
     st.caption(
-        "10'000 simulations · completed Bracket Sets fixed · Group Day "
-        "posterior frozen at Bracket start · provisional UI"
+        "10'000 simulations · completed Bracket Sets fixed · Day values "
+        "fixed at Bracket start (neutral without a Group Stage) · "
+        "provisional UI"
     )
 
 
@@ -2078,10 +2079,12 @@ def render_tournament_manager(
             )
 
             if (
-                draft["format_type"]
-                == tournament_manager.FORMAT_GROUP_STAGE
-                and 3 <= len(draft["participants"]) <= 32
-                and draft_groups
+                3 <= len(draft["participants"]) <= 32
+                and (
+                    draft["format_type"]
+                    == tournament_manager.FORMAT_DOUBLE_ELIMINATION
+                    or draft_groups
+                )
                 and not draft_bracket_state["champion_name"]
             ):
                 _render_live_bracket_forecast(
