@@ -366,6 +366,29 @@ def _render_group_control_center(
 ) -> None:
     """Render the live Group Stage dashboard."""
 
+    forecast = None
+    forecast_error = None
+    try:
+        with st.spinner("Updating live probabilities…"):
+            forecast = _cached_live_group_forecast(
+                str(db_path),
+                draft_id,
+                str(artifact_path),
+            )
+    except (
+        ArtifactError,
+        FileNotFoundError,
+        KeyError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
+        forecast_error = str(exc)
+
+    forecast_by_player_id = {
+        player.player_id: player
+        for player in (forecast.players if forecast is not None else ())
+    }
+
     ready = group_ready_matches(matches)
     decided = sum(
         str(match["status"]) in {"completed", "forfeit", "cancelled"}
@@ -400,6 +423,43 @@ def _render_group_control_center(
                 f"{selected['group_name']} · Round "
                 f"{selected['round_number']}"
             )
+            if forecast is not None:
+                leverage = next(
+                    (
+                        item
+                        for item in forecast.match_leverage
+                        if {
+                            item.player_1_id,
+                            item.player_2_id,
+                        }
+                        == {
+                            str(selected["player_1_id"]),
+                            str(selected["player_2_id"]),
+                        }
+                    ),
+                    None,
+                )
+                if leverage is not None:
+                    if (
+                        leverage.player_1_id
+                        == str(selected["player_1_id"])
+                    ):
+                        player_1_probability = (
+                            leverage.player_1_set_win_probability
+                        )
+                    else:
+                        player_1_probability = (
+                            1.0 - leverage.player_1_set_win_probability
+                        )
+                    probability_columns = st.columns(2)
+                    probability_columns[0].metric(
+                        f"{selected['player_1']} win probability",
+                        f"{player_1_probability:.1%}",
+                    )
+                    probability_columns[1].metric(
+                        f"{selected['player_2']} win probability",
+                        f"{1.0 - player_1_probability:.1%}",
+                    )
             _render_group_quick_result(
                 db_path=db_path,
                 draft_id=draft_id,
@@ -421,30 +481,50 @@ def _render_group_control_center(
     else:
         st.success("All Group Sets are decided.")
 
-    overview_tab, forecast_tab, sets_tab = st.tabs(
-        ["Standings", "Live Forecast", "All Sets"]
+    overview_tab, sets_tab = st.tabs(
+        ["Standings & Forecast", "All Sets"]
     )
     with overview_tab:
+        if forecast_error:
+            st.caption(f"Forecast unavailable: {forecast_error}")
         columns = st.columns(max(1, len(standings)))
         for column, group in zip(columns, standings):
-            rows = [
-                {
-                    "#": player["placement"],
-                    "Player": player["player"],
-                    "Sets": f"{player['sets_won']}–{player['sets_lost']}",
-                    "Games": f"{player['games_won']}–{player['games_lost']}",
-                }
-                for player in group["standings"]
-            ]
+            rows = []
+            for player in group["standings"]:
+                player_forecast = forecast_by_player_id.get(
+                    str(player["player_id"])
+                )
+                rows.append(
+                    {
+                        "#": player["placement"],
+                        "Player": player["player"],
+                        "Sets": (
+                            f"{player['sets_won']}–{player['sets_lost']}"
+                        ),
+                        "Games": (
+                            f"{player['games_won']}–{player['games_lost']}"
+                        ),
+                        "P(Winners)": (
+                            format_winners_probability(
+                                player_forecast.winners_probability,
+                                player_forecast.winners_status,
+                            )
+                            if player_forecast is not None
+                            else "—"
+                        ),
+                        "Status": (
+                            player_forecast.winners_status
+                            if player_forecast is not None
+                            else "Unavailable"
+                        ),
+                    }
+                )
             with column:
                 st.markdown(f"#### {group['group_name']}")
                 st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-    with forecast_tab:
-        _render_live_group_forecast(
-            db_path=db_path,
-            draft_id=draft_id,
-            artifact_path=artifact_path,
-            player_names=player_names,
+        st.caption(
+            "10'000 simulations · completed results fixed · "
+            "remaining Group Sets use frozen pre-tournament strengths"
         )
     with sets_tab:
         rows = [
