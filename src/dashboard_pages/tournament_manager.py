@@ -415,77 +415,76 @@ def _render_group_control_center(
             if selected_label not in option_by_label:
                 selected_label = recommended_label
             selected = option_by_label[selected_label]
+            player_1_probability = None
+            if forecast is not None:
+                leverage = next(
+                    (
+                        item
+                        for item in forecast.match_leverage
+                        if {
+                            item.player_1_id,
+                            item.player_2_id,
+                        }
+                        == {
+                            str(selected["player_1_id"]),
+                            str(selected["player_2_id"]),
+                        }
+                    ),
+                    None,
+                )
+                if leverage is not None:
+                    player_1_probability = (
+                        leverage.player_1_set_win_probability
+                        if (
+                            leverage.player_1_id
+                            == str(selected["player_1_id"])
+                        )
+                        else 1.0 - leverage.player_1_set_win_probability
+                    )
             with st.container(border=True):
                 st.markdown(
                     (
+                        '<div style="text-align:center;opacity:0.68;'
+                        'font-size:0.9rem;font-weight:600;'
+                        'margin:0.1rem 0 0.45rem;">'
+                        f"{html.escape(str(selected['group_name']))} · "
+                        f"Round {int(selected['round_number'])}"
+                        '</div>'
                         '<div style="'
                         'display:grid;'
                         'grid-template-columns:1fr auto 1fr;'
                         'align-items:center;'
                         'gap:1rem;'
-                        'padding:0.35rem 0 0.2rem;'
+                        'padding:0.1rem 0 0.2rem;'
                         '">'
-                        '<div style="text-align:right;font-size:1.65rem;'
-                        'font-weight:750;">'
+                        '<div style="text-align:right;font-size:2.15rem;'
+                        'font-weight:800;line-height:1.1;">'
                         f"{html.escape(str(selected['player_1']))}"
                         '</div>'
                         '<div style="opacity:0.55;font-size:0.9rem;'
                         'font-weight:700;">VS</div>'
-                        '<div style="text-align:left;font-size:1.65rem;'
-                        'font-weight:750;">'
+                        '<div style="text-align:left;font-size:2.15rem;'
+                        'font-weight:800;line-height:1.1;">'
                         f"{html.escape(str(selected['player_2']))}"
                         '</div>'
                         '</div>'
+                        + (
+                            '<div style="display:grid;'
+                            'grid-template-columns:1fr 1fr;gap:2rem;'
+                            'margin:0.45rem 0 0.1rem;opacity:0.65;'
+                            'font-size:0.82rem;">'
+                            '<div style="text-align:right;">'
+                            f"{player_1_probability:.1%} win chance"
+                            '</div>'
+                            '<div style="text-align:left;">'
+                            f"{1.0 - player_1_probability:.1%} win chance"
+                            '</div></div>'
+                            if player_1_probability is not None
+                            else ""
+                        )
                     ),
                     unsafe_allow_html=True,
                 )
-                st.markdown(
-                    (
-                        '<div style="text-align:center;opacity:0.68;'
-                        'margin:0 0 0.75rem;">'
-                        f"{html.escape(str(selected['group_name']))} · "
-                        f"Round {int(selected['round_number'])}"
-                        '</div>'
-                    ),
-                    unsafe_allow_html=True,
-                )
-                if forecast is not None:
-                    leverage = next(
-                        (
-                            item
-                            for item in forecast.match_leverage
-                            if {
-                                item.player_1_id,
-                                item.player_2_id,
-                            }
-                            == {
-                                str(selected["player_1_id"]),
-                                str(selected["player_2_id"]),
-                            }
-                        ),
-                        None,
-                    )
-                    if leverage is not None:
-                        if (
-                            leverage.player_1_id
-                            == str(selected["player_1_id"])
-                        ):
-                            player_1_probability = (
-                                leverage.player_1_set_win_probability
-                            )
-                        else:
-                            player_1_probability = (
-                                1.0 - leverage.player_1_set_win_probability
-                            )
-                        probability_columns = st.columns(2)
-                        probability_columns[0].metric(
-                            f"{selected['player_1']} win probability",
-                            f"{player_1_probability:.1%}",
-                        )
-                        probability_columns[1].metric(
-                            f"{selected['player_2']} win probability",
-                            f"{1.0 - player_1_probability:.1%}",
-                        )
                 st.divider()
                 _render_group_quick_result(
                     db_path=db_path,
