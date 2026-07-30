@@ -12,6 +12,7 @@ import streamlit as st
 import bracket_visualization
 import tournament_manager
 from dashboard_pages.forecast_format import format_winners_probability
+from dashboard_pages.tournament_control_center import group_ready_matches
 from monte_carlo.artifacts import ArtifactError, load_artifact
 from monte_carlo.live_service import (
     forecast_live_draft_bracket,
@@ -260,6 +261,346 @@ def _draft_stage(
         )
 
     return "Setup", "Add participants to continue."
+
+
+def _match_option_label(match: dict[str, Any]) -> str:
+    player_1_name = str(
+        match.get("player_1_name") or match.get("player_1") or "TBD"
+    )
+    player_2_name = str(
+        match.get("player_2_name") or match.get("player_2") or "TBD"
+    )
+    group = (
+        f"{match['group_name']} · Round {match['round_number']} · "
+        if match.get("group_name")
+        else f"{match['round_label']} · "
+    )
+    return f"{group}{player_1_name} vs {player_2_name}"
+
+
+def _render_group_quick_result(
+    *,
+    db_path: str | Path,
+    draft_id: str,
+    match: dict[str, Any],
+) -> None:
+    """Render the primary result action for the selected Group Set."""
+
+    match_id = str(match["group_match_id"])
+    player_1_name = str(match["player_1"])
+    player_2_name = str(match["player_2"])
+    result_type = st.segmented_control(
+        "Result type",
+        options=["Played", "W–L", "Cancelled"],
+        default="Played",
+        key=f"control_group_result_type_{match_id}",
+    )
+    with st.form(f"control_group_result_{match_id}"):
+        winner_id = None
+        player_1_score = None
+        player_2_score = None
+        if result_type == "Played":
+            score_columns = st.columns(2)
+            player_1_score = score_columns[0].number_input(
+                f"{player_1_name} score",
+                min_value=0,
+                value=0,
+                step=1,
+            )
+            player_2_score = score_columns[1].number_input(
+                f"{player_2_name} score",
+                min_value=0,
+                value=0,
+                step=1,
+            )
+        elif result_type == "W–L":
+            winner_by_name = {
+                player_1_name: str(match["player_1_id"]),
+                player_2_name: str(match["player_2_id"]),
+            }
+            winner_name = st.selectbox("Winner", options=list(winner_by_name))
+            winner_id = winner_by_name[winner_name]
+
+        submitted = st.form_submit_button(
+            "Save Result",
+            type="primary",
+            width="stretch",
+        )
+
+    if not submitted:
+        return
+    status = {
+        "Played": "completed",
+        "W–L": "forfeit",
+        "Cancelled": "cancelled",
+    }[str(result_type)]
+    try:
+        tournament_manager.update_draft_group_match(
+            db_path,
+            match_id,
+            status=status,
+            winner_id=winner_id,
+            player_1_score=(
+                int(player_1_score) if player_1_score is not None else None
+            ),
+            player_2_score=(
+                int(player_2_score) if player_2_score is not None else None
+            ),
+        )
+    except ValueError as exc:
+        st.error(str(exc))
+    else:
+        st.cache_data.clear()
+        st.session_state.pop(f"control_group_choice_{draft_id}", None)
+        st.rerun()
+
+
+def _render_group_control_center(
+    *,
+    db_path: str | Path,
+    draft_id: str,
+    matches: list[dict[str, Any]],
+    standings: list[dict[str, Any]],
+    artifact_path: Path,
+    player_names: dict[str, str],
+) -> None:
+    """Render the live Group Stage dashboard."""
+
+    ready = group_ready_matches(matches)
+    decided = sum(
+        str(match["status"]) in {"completed", "forfeit", "cancelled"}
+        for match in matches
+    )
+    st.progress(
+        decided / len(matches) if matches else 0.0,
+        text=f"{decided} of {len(matches)} Group Sets decided",
+    )
+
+    if ready:
+        option_by_label = {
+            _match_option_label(match): match for match in ready
+        }
+        recommended_label = next(iter(option_by_label))
+        action_column, alternatives_column = st.columns([1.45, 1])
+        with action_column:
+            st.markdown("### Up Next")
+            choice_key = f"control_group_choice_{draft_id}"
+            selected_label = st.session_state.get(
+                choice_key,
+                recommended_label,
+            )
+            if selected_label not in option_by_label:
+                selected_label = recommended_label
+            selected = option_by_label[selected_label]
+            st.markdown(
+                f"## {selected['player_1']} vs "
+                f"{selected['player_2']}"
+            )
+            st.caption(
+                f"{selected['group_name']} · Round "
+                f"{selected['round_number']}"
+            )
+            _render_group_quick_result(
+                db_path=db_path,
+                draft_id=draft_id,
+                match=selected,
+            )
+        with alternatives_column:
+            st.markdown("### Choose Another Set")
+            st.selectbox(
+                "Playable sets",
+                options=list(option_by_label),
+                index=list(option_by_label).index(selected_label),
+                key=choice_key,
+                label_visibility="collapsed",
+            )
+            st.caption(
+                "The first option balances round order and how many "
+                "sets each player has already completed."
+            )
+    else:
+        st.success("All Group Sets are decided.")
+
+    overview_tab, forecast_tab, sets_tab = st.tabs(
+        ["Standings", "Live Forecast", "All Sets"]
+    )
+    with overview_tab:
+        columns = st.columns(max(1, len(standings)))
+        for column, group in zip(columns, standings):
+            rows = [
+                {
+                    "#": player["placement"],
+                    "Player": player["player"],
+                    "Sets": f"{player['sets_won']}–{player['sets_lost']}",
+                    "Games": f"{player['games_won']}–{player['games_lost']}",
+                }
+                for player in group["standings"]
+            ]
+            with column:
+                st.markdown(f"#### {group['group_name']}")
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    with forecast_tab:
+        _render_live_group_forecast(
+            db_path=db_path,
+            draft_id=draft_id,
+            artifact_path=artifact_path,
+            player_names=player_names,
+        )
+    with sets_tab:
+        rows = [
+            {
+                "Group": match["group_name"],
+                "Round": match["round_number"],
+                "Set": (
+                    f"{match['player_1']} vs {match['player_2']}"
+                ),
+                "Status": str(match["status"]).title(),
+                "Result": (
+                    f"{match['player_1_score']}–{match['player_2_score']}"
+                    if match["player_1_score"] is not None
+                    else "—"
+                ),
+            }
+            for match in sorted(
+                matches,
+                key=lambda item: (
+                    str(item["status"]) != "pending",
+                    int(item["round_number"]),
+                    int(item["match_number"]),
+                ),
+            )
+        ]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+
+
+def _render_bracket_control_center(
+    *,
+    db_path: str | Path,
+    draft_id: str,
+    bracket_state: dict[str, Any],
+    artifact_path: Path,
+    player_names: dict[str, str],
+    show_bracket_match_dialog: Callable[..., None],
+) -> None:
+    """Render ready actions around the live Bracket visualization."""
+
+    matches = bracket_state["matches"]
+    ready = sorted(
+        (
+            match
+            for match in matches
+            if str(match["status"]) == "pending"
+        ),
+        key=lambda match: (
+            int(match.get("suggested_play_order") or 9999),
+            int(match["round_number"]),
+            int(match["match_number"]),
+        ),
+    )
+    played = int(bracket_state["played_set_count"])
+    total = int(bracket_state["playable_set_count"])
+    st.progress(
+        played / total if total else 0.0,
+        text=f"{played} of {total} Bracket Sets played",
+    )
+
+    dialog_key = f"open_bracket_match_code_{draft_id}"
+    visible_codes = {
+        str(match["match_code"])
+        for match in matches
+        if str(match["status"]) != "inactive"
+    }
+    open_code = st.session_state.get(dialog_key)
+    if open_code not in visible_codes:
+        open_code = None
+        st.session_state.pop(dialog_key, None)
+
+    if ready:
+        option_by_label = {
+            _match_option_label(match): match for match in ready
+        }
+        choice_key = f"control_bracket_choice_{draft_id}"
+        chosen_label = st.session_state.get(
+            choice_key,
+            next(iter(option_by_label)),
+        )
+        if chosen_label not in option_by_label:
+            chosen_label = next(iter(option_by_label))
+        chosen = option_by_label[chosen_label]
+        action_column, alternatives_column = st.columns([1.45, 1])
+        with action_column:
+            st.markdown("### Up Next")
+            st.markdown(
+                f"## {chosen['player_1_name']} vs "
+                f"{chosen['player_2_name']}"
+            )
+            st.caption(
+                f"{chosen['round_label']} · {chosen['match_code']}"
+            )
+            if st.button(
+                "Enter Result",
+                type="primary",
+                width="stretch",
+                key=f"control_open_bracket_{chosen['bracket_match_id']}",
+            ):
+                st.session_state[dialog_key] = str(chosen["match_code"])
+                st.rerun()
+        with alternatives_column:
+            st.markdown("### Other Ready Sets")
+            st.selectbox(
+                "Ready sets",
+                options=list(option_by_label),
+                index=list(option_by_label).index(chosen_label),
+                key=choice_key,
+                label_visibility="collapsed",
+            )
+            st.caption(
+                "Only sets whose two players are already known can be chosen."
+            )
+    elif not bracket_state["champion_name"]:
+        st.info("No Bracket Set is ready. An earlier result is still required.")
+
+    bracket_tab, forecast_tab = st.tabs(["Live Bracket", "Live Forecast"])
+    with bracket_tab:
+        clicked_code = bracket_visualization.render_bracket(
+            matches,
+            bracket_state["routes"],
+            selected_match_code=open_code,
+            component_key=f"control_bracket_component_{draft_id}",
+        )
+        if (
+            clicked_code
+            and clicked_code in visible_codes
+            and clicked_code != open_code
+        ):
+            st.session_state[dialog_key] = clicked_code
+            st.rerun()
+    with forecast_tab:
+        if not bracket_state["champion_name"]:
+            _render_live_bracket_forecast(
+                db_path=db_path,
+                draft_id=draft_id,
+                artifact_path=artifact_path,
+                player_names=player_names,
+            )
+        else:
+            st.success(
+                f"Champion: {bracket_state['champion_name']} · "
+                "Title probability 100%"
+            )
+
+    open_code = st.session_state.get(dialog_key)
+    if open_code:
+        selected_match = next(
+            (
+                match
+                for match in matches
+                if str(match["match_code"]) == str(open_code)
+            ),
+            None,
+        )
+        if selected_match is not None:
+            show_bracket_match_dialog(selected_match, dialog_key)
 
 
 def render_tournament_manager(
@@ -516,6 +857,87 @@ def render_tournament_manager(
             "results and statistics."
         )
         return
+
+    control_center_active = bool(
+        draft_group_matches or bracket_generated
+    )
+    if control_center_active:
+        st.markdown("## Tournament Control Center")
+        show_detailed_management = st.toggle(
+            "Show detailed management",
+            value=False,
+            key=f"show_detailed_management_{selected_draft_id}",
+            help=(
+                "Open the complete legacy workflow for corrections, resets, "
+                "and less common administrative actions."
+            ),
+        )
+        if (
+            draft_group_matches
+            and not bracket_generated
+            and not show_detailed_management
+        ):
+            group_standings = (
+                load_tournament_draft_group_standings(
+                    selected_draft_id,
+                )
+            )
+            _render_group_control_center(
+                db_path=db_path,
+                draft_id=selected_draft_id,
+                matches=draft_group_matches,
+                standings=group_standings,
+                artifact_path=model_artifact_path,
+                player_names=forecast_player_names,
+            )
+            group_complete = all(
+                str(match["status"]) != "pending"
+                for match in draft_group_matches
+            )
+            if group_complete:
+                st.divider()
+                st.success(
+                    "Group Stage complete. Final standings and Bracket "
+                    "seeds are ready."
+                )
+                if st.button(
+                    "Generate Bracket",
+                    type="primary",
+                    key=f"control_generate_bracket_{selected_draft_id}",
+                ):
+                    try:
+                        tournament_manager.generate_draft_bracket(
+                            db_path,
+                            selected_draft_id,
+                        )
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.cache_data.clear()
+                        st.rerun()
+            st.caption(
+                "Use “Show detailed management” for result corrections, "
+                "group resets, or setup changes."
+            )
+            return
+        if (
+            bracket_generated
+            and not draft_bracket_state["champion_name"]
+            and not show_detailed_management
+        ):
+            _render_bracket_control_center(
+                db_path=db_path,
+                draft_id=selected_draft_id,
+                bracket_state=draft_bracket_state,
+                artifact_path=model_artifact_path,
+                player_names=forecast_player_names,
+                show_bracket_match_dialog=show_bracket_match_dialog,
+            )
+            st.caption(
+                "Use “Show detailed management” for complete Set lists, "
+                "result corrections, or Bracket resets."
+            )
+            return
 
     with st.expander("Edit Tournament Details"):
         current_draft_date = (
