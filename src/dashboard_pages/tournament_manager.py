@@ -278,6 +278,119 @@ def _match_option_label(match: dict[str, Any]) -> str:
     return f"{group}{player_1_name} vs {player_2_name}"
 
 
+def _render_control_table(
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    columns: str,
+    highlighted_rows: set[int] | None = None,
+    emphasis_column: int | None = None,
+) -> None:
+    """Render a compact dashboard table using the Home page visual language."""
+
+    highlighted_rows = highlighted_rows or set()
+    header_html = "".join(
+        f"<div>{html.escape(header)}</div>" for header in headers
+    )
+    row_html = []
+    for row_index, row in enumerate(rows):
+        cells = []
+        for column_index, value in enumerate(row):
+            emphasis_class = (
+                " control-table-emphasis"
+                if column_index == emphasis_column
+                else ""
+            )
+            cells.append(
+                f'<div class="control-table-cell{emphasis_class}">'
+                f"{html.escape(str(value))}</div>"
+            )
+        highlight_class = (
+            " control-table-row-highlight"
+            if row_index in highlighted_rows
+            else ""
+        )
+        row_html.append(
+            f'<div class="control-table-row{highlight_class}">'
+            f"{''.join(cells)}</div>"
+        )
+
+    st.markdown(
+        (
+            """
+            <style>
+            .control-table {
+                overflow: hidden;
+                border: 1px solid rgba(128, 128, 128, 0.30);
+                border-radius: 0.8rem;
+            }
+            .control-table-header,
+            .control-table-row {
+                display: grid;
+                grid-template-columns: var(--control-table-columns);
+                align-items: center;
+                gap: 0.8rem;
+                padding: 0.7rem 1rem;
+            }
+            .control-table-header {
+                min-height: 2.6rem;
+                border-bottom: 1px solid rgba(128, 128, 128, 0.24);
+                background: rgba(128, 128, 128, 0.08);
+                color: rgba(250, 250, 250, 0.55);
+                font-size: 0.72rem;
+                font-weight: 750;
+                letter-spacing: 0.035em;
+                text-transform: uppercase;
+            }
+            .control-table-row {
+                min-height: 3.65rem;
+                border-bottom: 1px solid rgba(128, 128, 128, 0.20);
+                transition: background-color 0.15s ease;
+            }
+            .control-table-row:last-child {
+                border-bottom: none;
+            }
+            .control-table-row:hover {
+                background: rgba(128, 128, 128, 0.055);
+            }
+            .control-table-row-highlight {
+                background: rgba(34, 197, 94, 0.07);
+            }
+            .control-table-cell {
+                min-width: 0;
+                overflow: hidden;
+                color: rgba(250, 250, 250, 0.76);
+                font-size: 0.88rem;
+                font-weight: 650;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .control-table-emphasis {
+                color: rgb(250, 250, 250);
+                font-size: 1.02rem;
+                font-weight: 800;
+            }
+            @media (max-width: 900px) {
+                .control-table-scroll {
+                    overflow-x: auto;
+                }
+                .control-table {
+                    min-width: 46rem;
+                }
+            }
+            </style>
+            """
+            '<div class="control-table-scroll">'
+            '<div class="control-table" '
+            f'style="--control-table-columns:{html.escape(columns)};">'
+            f'<div class="control-table-header">{header_html}</div>'
+            f"{''.join(row_html)}"
+            "</div></div>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+
 def _render_group_quick_result(
     *,
     db_path: str | Path,
@@ -358,7 +471,7 @@ def _render_group_quick_result(
         """,
         unsafe_allow_html=True,
     )
-    with st.form(f"control_group_result_{match_id}"):
+    with st.form(f"control_group_result_{match_id}", border=False):
         winner_id = None
         player_1_score = None
         player_2_score = None
@@ -657,22 +770,21 @@ def _render_group_control_center(
             st.caption(f"Forecast unavailable: {forecast_error}")
         columns = st.columns(max(1, len(standings)))
         for column, group in zip(columns, standings):
-            rows = []
+            rows: list[list[str]] = []
             for player in group["standings"]:
                 player_forecast = forecast_by_player_id.get(
                     str(player["player_id"])
                 )
-                rows.append(
-                    {
-                        "#": player["placement"],
-                        "Player": player["player"],
-                        "Sets": (
+                rows.append([
+                        str(player["placement"]),
+                        str(player["player"]),
+                        (
                             f"{player['sets_won']}–{player['sets_lost']}"
                         ),
-                        "Games": (
+                        (
                             f"{player['games_won']}–{player['games_lost']}"
                         ),
-                        "P(Winners)": (
+                        (
                             format_winners_probability(
                                 player_forecast.winners_probability,
                                 player_forecast.winners_status,
@@ -680,35 +792,45 @@ def _render_group_control_center(
                             if player_forecast is not None
                             else "—"
                         ),
-                        "Status": (
+                        (
                             player_forecast.winners_status
                             if player_forecast is not None
                             else "Unavailable"
                         ),
-                    }
+                    ]
                 )
             with column:
                 st.markdown(f"#### {group['group_name']}")
-                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+                _render_control_table(
+                    ["#", "Player", "Sets", "Games", "P(Winners)", "Status"],
+                    rows,
+                    columns=(
+                        "2.5rem minmax(7rem,1.5fr) "
+                        "minmax(4rem,0.65fr) minmax(4rem,0.65fr) "
+                        "minmax(6rem,0.8fr) minmax(7rem,1fr)"
+                    ),
+                    highlighted_rows={0},
+                    emphasis_column=1,
+                )
         st.caption(
             "10'000 simulations · completed results fixed · "
             "remaining Group Sets use frozen pre-tournament strengths"
         )
     with sets_tab:
         rows = [
-            {
-                "Group": match["group_name"],
-                "Round": match["round_number"],
-                "Set": (
+            [
+                str(match["group_name"]),
+                str(match["round_number"]),
+                (
                     f"{match['player_1']} vs {match['player_2']}"
                 ),
-                "Status": str(match["status"]).title(),
-                "Result": (
+                str(match["status"]).title(),
+                (
                     f"{match['player_1_score']}–{match['player_2_score']}"
                     if match["player_1_score"] is not None
                     else "—"
                 ),
-            }
+            ]
             for match in sorted(
                 matches,
                 key=lambda item: (
@@ -718,7 +840,16 @@ def _render_group_control_center(
                 ),
             )
         ]
-        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        _render_control_table(
+            ["Group", "Round", "Set", "Status", "Result"],
+            rows,
+            columns=(
+                "minmax(5rem,0.7fr) minmax(4rem,0.55fr) "
+                "minmax(12rem,2fr) minmax(6rem,0.8fr) "
+                "minmax(5rem,0.65fr)"
+            ),
+            emphasis_column=2,
+        )
 
 
 def _render_bracket_control_center(
