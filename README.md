@@ -7,8 +7,35 @@ The project provides:
 - tournament and player statistics
 - Elo rankings and rating history
 - head-to-head records
+- an internal Tournament Manager for Group Stage and Double Elimination
+- live Monte Carlo qualification, bracket, and title forecasts
 - Challonge tournament imports
 - data validation tools
+
+## Tournament Manager and live forecasts
+
+The Tournament Manager supports:
+
+- 3–32 participants, including inactive and newly created players
+- one or multiple Round Robin groups
+- split entry into Winners and Losers after the Group Stage
+- Double Elimination without a Group Stage, with all players in Winners
+- bracket sizes from 4 to 32, including Byes
+- live Winners, Grand Final, title, and open-Set leverage probabilities
+- fixed completed results and automatic recalculation after new results
+- Grand Final Reset handling
+
+Players absent from the current model artifact receive a clearly labelled
+neutral runtime prior. This does not modify the trained artifact.
+
+The separate Monte Carlo page remains a lightweight planning and test tool.
+The Tournament Manager is the production surface for forecasts during a WC.
+
+Current forecast limitations:
+
+- a real two-player Bracket Set stored as `cancelled` is not simulated
+- multi-group lock labels remain conservative while any Group Set is open
+- the provisional forecast UI may be redesigned independently of the model
 
 ## Installation
 
