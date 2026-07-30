@@ -404,16 +404,23 @@ def _render_group_control_center(
             _match_option_label(match): match for match in ready
         }
         recommended_label = next(iter(option_by_label))
-        action_column, alternatives_column = st.columns([1.45, 1])
+        choice_key = f"control_group_choice_{draft_id}"
+        selected_label = st.session_state.get(
+            choice_key,
+            recommended_label,
+        )
+        if selected_label not in option_by_label:
+            selected_label = recommended_label
+            st.session_state[choice_key] = recommended_label
+
+        if len(option_by_label) > 1:
+            action_column, alternatives_column = st.columns([1.45, 1])
+        else:
+            action_column = st.container()
+            alternatives_column = None
+
         with action_column:
             st.markdown("### Up Next")
-            choice_key = f"control_group_choice_{draft_id}"
-            selected_label = st.session_state.get(
-                choice_key,
-                recommended_label,
-            )
-            if selected_label not in option_by_label:
-                selected_label = recommended_label
             selected = option_by_label[selected_label]
             player_1_probability = None
             if forecast is not None:
@@ -491,19 +498,19 @@ def _render_group_control_center(
                     draft_id=draft_id,
                     match=selected,
                 )
-        with alternatives_column:
-            st.markdown("### Choose Another Set")
-            st.selectbox(
-                "Playable sets",
-                options=list(option_by_label),
-                index=list(option_by_label).index(selected_label),
-                key=choice_key,
-                label_visibility="collapsed",
-            )
-            st.caption(
-                "The first option balances round order and how many "
-                "sets each player has already completed."
-            )
+        if alternatives_column is not None:
+            with alternatives_column:
+                st.markdown("### Other Playable Sets")
+                with st.container(border=True):
+                    st.selectbox(
+                        "Play instead",
+                        options=list(option_by_label),
+                        index=list(option_by_label).index(selected_label),
+                        key=choice_key,
+                    )
+                    st.caption(
+                        "Choose any currently open Group Set."
+                    )
     else:
         st.success("All Group Sets are decided.")
 
