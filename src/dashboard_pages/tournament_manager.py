@@ -296,14 +296,25 @@ def _render_control_table(
     for row_index, row in enumerate(rows):
         cells = []
         for column_index, value in enumerate(row):
+            value_text = str(value)
             emphasis_class = (
                 " control-table-emphasis"
                 if column_index == emphasis_column
                 else ""
             )
+            movement_class = (
+                " control-table-positive"
+                if value_text.startswith("▲")
+                else (
+                    " control-table-negative"
+                    if value_text.startswith("▼")
+                    else ""
+                )
+            )
             cells.append(
-                f'<div class="control-table-cell{emphasis_class}">'
-                f"{html.escape(str(value))}</div>"
+                f'<div class="control-table-cell{emphasis_class}'
+                f'{movement_class}">'
+                f"{html.escape(value_text)}</div>"
             )
         highlight = row_highlights.get(row_index)
         highlight_class = (
@@ -372,6 +383,12 @@ def _render_control_table(
                 font-size: 1.02rem;
                 font-weight: 800;
             }
+            .control-table-positive {
+                color: rgb(74, 222, 128);
+            }
+            .control-table-negative {
+                color: rgb(248, 113, 113);
+            }
             @media (max-width: 900px) {
                 .control-table-scroll {
                     overflow-x: auto;
@@ -391,6 +408,16 @@ def _render_control_table(
         ),
         unsafe_allow_html=True,
     )
+
+
+def _ordinal(value: int) -> str:
+    """Return a compact English ordinal label."""
+
+    if 10 <= value % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(value % 10, "th")
+    return f"{value}{suffix}"
 
 
 def _render_group_quick_result(
@@ -901,22 +928,52 @@ def _render_bracket_control_center(
             st.warning(str(exc))
         else:
             st.markdown("### Final Standings")
+            placements = finalization_preview["placements"]
+            placement_counts: dict[int, int] = {}
+            for placement in placements:
+                placement_value = int(placement["placement"])
+                placement_counts[placement_value] = (
+                    placement_counts.get(placement_value, 0) + 1
+                )
+            medal_by_placement = {
+                1: "🥇",
+                2: "🥈",
+                3: "🥉",
+            }
             placement_rows = [
                 [
-                    str(placement["placement"]),
+                    (
+                        f"{medal_by_placement.get(int(placement['placement']), '')} "
+                        f"{'T-' if placement_counts[int(placement['placement'])] > 1 else ''}"
+                        f"{_ordinal(int(placement['placement']))}"
+                    ).strip(),
                     str(placement["player"]),
-                    str(placement["seed"]),
+                    f"Seed #{int(placement['seed'])}",
+                    (
+                        f"▲ {int(placement['seed']) - int(placement['placement'])}"
+                        if int(placement["seed"]) > int(placement["placement"])
+                        else (
+                            f"▼ {int(placement['placement']) - int(placement['seed'])}"
+                            if int(placement["seed"]) < int(placement["placement"])
+                            else "= Seed"
+                        )
+                    ),
                 ]
-                for placement in finalization_preview["placements"]
+                for placement in placements
             ]
             _render_control_table(
-                ["#", "Player", "Seed"],
+                ["Placement", "Player", "Initial Seed", "Change"],
                 placement_rows,
                 columns=(
-                    "4rem minmax(12rem,2fr) minmax(5rem,0.65fr)"
+                    "minmax(7rem,0.8fr) minmax(12rem,2fr) "
+                    "minmax(7rem,0.75fr) minmax(6rem,0.7fr)"
                 ),
                 row_highlights={0: "winners"},
                 emphasis_column=1,
+            )
+            st.caption(
+                "▲ finished above the initial seed · "
+                "▼ finished below the initial seed"
             )
 
     dialog_key = f"open_bracket_match_code_{draft_id}"
