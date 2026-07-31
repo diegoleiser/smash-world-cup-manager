@@ -1199,6 +1199,7 @@ def render_tournament_manager(
                 "All players start in Winners Bracket",
                 "Lower seeds start in Losers Bracket",
             ],
+            index=1,
             key="new_draft_entry_mode",
         )
 
