@@ -283,12 +283,12 @@ def _render_control_table(
     rows: list[list[str]],
     *,
     columns: str,
-    highlighted_rows: set[int] | None = None,
+    row_highlights: dict[int, str] | None = None,
     emphasis_column: int | None = None,
 ) -> None:
     """Render a compact dashboard table using the Home page visual language."""
 
-    highlighted_rows = highlighted_rows or set()
+    row_highlights = row_highlights or {}
     header_html = "".join(
         f"<div>{html.escape(header)}</div>" for header in headers
     )
@@ -305,10 +305,9 @@ def _render_control_table(
                 f'<div class="control-table-cell{emphasis_class}">'
                 f"{html.escape(str(value))}</div>"
             )
+        highlight = row_highlights.get(row_index)
         highlight_class = (
-            " control-table-row-highlight"
-            if row_index in highlighted_rows
-            else ""
+            f" control-table-row-{highlight}" if highlight else ""
         )
         row_html.append(
             f'<div class="control-table-row{highlight_class}">'
@@ -353,8 +352,11 @@ def _render_control_table(
             .control-table-row:hover {
                 background: rgba(128, 128, 128, 0.055);
             }
-            .control-table-row-highlight {
+            .control-table-row-winners {
                 background: rgba(34, 197, 94, 0.07);
+            }
+            .control-table-row-losers {
+                background: rgba(245, 158, 11, 0.07);
             }
             .control-table-cell {
                 min-width: 0;
@@ -592,7 +594,7 @@ def _render_group_control_center(
             st.session_state[choice_key] = recommended_label
 
         has_alternatives = len(option_by_label) > 1
-        card_height = 470 if has_alternatives else None
+        card_height: int | str = 470 if has_alternatives else "content"
         if has_alternatives:
             action_column, alternatives_column = st.columns([1.45, 1])
         else:
@@ -771,10 +773,21 @@ def _render_group_control_center(
         columns = st.columns(max(1, len(standings)))
         for column, group in zip(columns, standings):
             rows: list[list[str]] = []
+            row_highlights: dict[int, str] = {}
             for player in group["standings"]:
                 player_forecast = forecast_by_player_id.get(
                     str(player["player_id"])
                 )
+                player_status = (
+                    player_forecast.winners_status
+                    if player_forecast is not None
+                    else "Unavailable"
+                )
+                row_index = len(rows)
+                if player_status == "Winners Locked":
+                    row_highlights[row_index] = "winners"
+                elif player_status == "Losers Locked":
+                    row_highlights[row_index] = "losers"
                 rows.append([
                         str(player["placement"]),
                         str(player["player"]),
@@ -792,11 +805,7 @@ def _render_group_control_center(
                             if player_forecast is not None
                             else "—"
                         ),
-                        (
-                            player_forecast.winners_status
-                            if player_forecast is not None
-                            else "Unavailable"
-                        ),
+                        player_status,
                     ]
                 )
             with column:
@@ -809,7 +818,7 @@ def _render_group_control_center(
                         "minmax(4rem,0.65fr) minmax(4rem,0.65fr) "
                         "minmax(6rem,0.8fr) minmax(7rem,1fr)"
                     ),
-                    highlighted_rows={0},
+                    row_highlights=row_highlights,
                     emphasis_column=1,
                 )
         st.caption(
