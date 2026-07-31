@@ -1154,23 +1154,79 @@ def show_bracket_match_dialog(
         return
 
     if match_status == "pending":
-        result_type = st.radio(
+        result_type = st.segmented_control(
             "Result type",
             options=[
                 "Played",
                 "W–L",
                 "Cancelled",
             ],
-            horizontal=True,
+            default="Played",
             key=(
                 f"dialog_result_type_"
                 f"{match['bracket_match_id']}"
             ),
         )
+        st.markdown(
+            """
+            <style>
+            [class*="st-key-dialog_bracket_score_"]
+            div[data-baseweb="input"] {
+                min-height: 3.55rem;
+                overflow: hidden;
+                border: 1px solid rgba(128, 128, 128, 0.42);
+                border-radius: 0.65rem;
+                background: rgba(255, 255, 255, 0.025);
+                box-shadow:
+                    0 1px 2px rgba(0, 0, 0, 0.25),
+                    0 6px 18px rgba(0, 0, 0, 0.08);
+                transition:
+                    border-color 0.15s ease,
+                    box-shadow 0.15s ease;
+            }
+            [class*="st-key-dialog_bracket_score_"]
+            div[data-baseweb="input"]:focus-within {
+                border-color: var(--primary-color, rgb(255, 75, 75));
+                box-shadow:
+                    0 0 0 2px rgba(96, 165, 250, 0.22),
+                    0 8px 24px rgba(59, 130, 246, 0.18);
+            }
+            [class*="st-key-dialog_bracket_score_"] input {
+                padding: 0 !important;
+                color: rgb(250, 250, 250) !important;
+                font-size: 1.55rem !important;
+                font-weight: 800 !important;
+                text-align: center !important;
+            }
+            [class*="st-key-dialog_bracket_score_"]
+            div[data-baseweb="input"] button {
+                width: 3.25rem;
+                min-width: 3.25rem;
+                border-radius: 0;
+                color: rgba(250, 250, 250, 0.68);
+                transition:
+                    background-color 0.15s ease,
+                    color 0.15s ease;
+            }
+            [class*="st-key-dialog_bracket_score_"]
+            div[data-baseweb="input"] button:hover {
+                background: rgba(59, 130, 246, 0.12);
+                color: rgb(250, 250, 250);
+            }
+            [class*="st-key-dialog_bracket_score_"] label p {
+                color: rgba(250, 250, 250, 0.68);
+                font-size: 0.82rem;
+                font-weight: 650;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
         with st.form(
             f"dialog_bracket_match_"
-            f"{match['bracket_match_id']}"
+            f"{match['bracket_match_id']}",
+            border=False,
         ):
             winner_id = None
             player_1_score = None
@@ -1185,6 +1241,10 @@ def show_bracket_match_dialog(
                         min_value=0,
                         value=0,
                         step=1,
+                        key=(
+                            "dialog_bracket_score_"
+                            f"{match['bracket_match_id']}_player_1"
+                        ),
                     )
 
                 with score_cols[1]:
@@ -1193,6 +1253,10 @@ def show_bracket_match_dialog(
                         min_value=0,
                         value=0,
                         step=1,
+                        key=(
+                            "dialog_bracket_score_"
+                            f"{match['bracket_match_id']}_player_2"
+                        ),
                     )
 
             elif result_type == "W–L":

@@ -903,6 +903,28 @@ def _render_bracket_control_center(
         open_code = None
         st.session_state.pop(dialog_key, None)
 
+    forecast_by_code = {}
+    if ready:
+        try:
+            with st.spinner("Updating bracket probabilities…"):
+                forecast = _cached_live_bracket_forecast(
+                    str(db_path),
+                    draft_id,
+                    str(artifact_path),
+                )
+            forecast_by_code = {
+                str(match.match_code): match
+                for match in forecast.ready_matches
+            }
+        except (
+            ArtifactError,
+            FileNotFoundError,
+            KeyError,
+            RuntimeError,
+            ValueError,
+        ):
+            pass
+
     if ready:
         option_by_label = {
             _match_option_label(match): match for match in ready
@@ -915,67 +937,174 @@ def _render_bracket_control_center(
         if chosen_label not in option_by_label:
             chosen_label = next(iter(option_by_label))
         chosen = option_by_label[chosen_label]
-        action_column, alternatives_column = st.columns([1.45, 1])
+        has_alternatives = len(option_by_label) > 1
+        card_height: int | str = 300 if has_alternatives else "content"
+        if has_alternatives:
+            action_column, alternatives_column = st.columns([1.45, 1])
+        else:
+            action_column = st.container()
+            alternatives_column = None
         with action_column:
             st.markdown("### Up Next")
-            st.markdown(
-                f"## {chosen['player_1_name']} vs "
-                f"{chosen['player_2_name']}"
+            chosen_forecast = forecast_by_code.get(
+                str(chosen["match_code"])
             )
-            st.caption(
-                f"{chosen['round_label']} · {chosen['match_code']}"
-            )
-            if st.button(
-                "Enter Result",
-                type="primary",
-                width="stretch",
-                key=f"control_open_bracket_{chosen['bracket_match_id']}",
-            ):
-                st.session_state[dialog_key] = str(chosen["match_code"])
-                st.rerun()
-        with alternatives_column:
-            st.markdown("### Other Ready Sets")
-            st.selectbox(
-                "Ready sets",
-                options=list(option_by_label),
-                index=list(option_by_label).index(chosen_label),
-                key=choice_key,
-                label_visibility="collapsed",
-            )
-            st.caption(
-                "Only sets whose two players are already known can be chosen."
-            )
+            player_1_probability = None
+            if chosen_forecast is not None:
+                player_1_probability = (
+                    chosen_forecast.player_1_win_probability
+                    if (
+                        str(chosen_forecast.player_1_id)
+                        == str(chosen["player_1_id"])
+                    )
+                    else 1.0 - chosen_forecast.player_1_win_probability
+                )
+            with st.container(border=True, height=card_height):
+                st.markdown(
+                    (
+                        '<div style="text-align:center;opacity:0.68;'
+                        'font-size:0.9rem;font-weight:600;'
+                        'margin:0.1rem 0 0.45rem;">'
+                        f"{html.escape(str(chosen['round_label']))} · "
+                        f"{html.escape(str(chosen['match_code']))}"
+                        '</div>'
+                        '<div style="display:grid;'
+                        'grid-template-columns:1fr auto 1fr;'
+                        'align-items:center;gap:1rem;'
+                        'padding:0.1rem 0 0.2rem;">'
+                        '<div style="text-align:right;font-size:2.15rem;'
+                        'font-weight:800;line-height:1.1;">'
+                        f"{html.escape(str(chosen['player_1_name']))}"
+                        '</div>'
+                        '<div style="opacity:0.55;font-size:0.9rem;'
+                        'font-weight:700;">VS</div>'
+                        '<div style="text-align:left;font-size:2.15rem;'
+                        'font-weight:800;line-height:1.1;">'
+                        f"{html.escape(str(chosen['player_2_name']))}"
+                        '</div></div>'
+                        + (
+                            '<div style="display:grid;'
+                            'grid-template-columns:1fr 1fr;gap:2rem;'
+                            'margin:0.45rem 0 0.1rem;opacity:0.65;'
+                            'font-size:0.82rem;">'
+                            '<div style="text-align:right;">'
+                            f"{player_1_probability:.1%} win chance"
+                            '</div><div style="text-align:left;">'
+                            f"{1.0 - player_1_probability:.1%} win chance"
+                            '</div></div>'
+                            if player_1_probability is not None
+                            else ""
+                        )
+                    ),
+                    unsafe_allow_html=True,
+                )
+                st.divider()
+                if st.button(
+                    "Enter Result",
+                    type="primary",
+                    width="stretch",
+                    key=(
+                        "control_open_bracket_"
+                        f"{chosen['bracket_match_id']}"
+                    ),
+                ):
+                    st.session_state[dialog_key] = str(
+                        chosen["match_code"]
+                    )
+                    st.rerun()
+        if alternatives_column is not None:
+            with alternatives_column:
+                st.markdown("### Other Ready Sets")
+                alternative_labels = [
+                    label
+                    for label in option_by_label
+                    if label != chosen_label
+                ]
+                with st.container(border=True, height=card_height):
+                    st.markdown(
+                        """
+                        <style>
+                        [class*="st-key-control_choose_bracket_"] button {
+                            min-height: 4.35rem;
+                            padding: 0.65rem 0.9rem;
+                            text-align: left;
+                            transition:
+                                border-color 0.15s ease,
+                                box-shadow 0.15s ease,
+                                transform 0.15s ease;
+                        }
+                        [class*="st-key-control_choose_bracket_"]
+                        button:hover,
+                        [class*="st-key-control_choose_bracket_"]
+                        button:focus-visible {
+                            border-color:
+                                var(--primary-color, rgb(255, 75, 75));
+                            box-shadow:
+                                0 2px 5px rgba(0, 0, 0, 0.32),
+                                0 8px 24px rgba(59, 130, 246, 0.18);
+                            transform: translateY(-1px);
+                        }
+                        [class*="st-key-control_choose_bracket_"] button p {
+                            width: 100%;
+                            color: rgba(250, 250, 250, 0.58);
+                            font-size: 0.78rem;
+                            line-height: 1.25;
+                            text-align: left;
+                        }
+                        [class*="st-key-control_choose_bracket_"]
+                        button strong {
+                            display: block;
+                            margin-bottom: 0.2rem;
+                            color: rgb(250, 250, 250);
+                            font-size: 1.18rem;
+                            line-height: 1.2;
+                        }
+                        </style>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    for label in alternative_labels[:3]:
+                        match = option_by_label[label]
+                        if st.button(
+                            (
+                                f"**{match['player_1_name']}  vs  "
+                                f"{match['player_2_name']}**  \n"
+                                f"{match['round_label']} · "
+                                f"{match['match_code']}  →"
+                            ),
+                            key=(
+                                "control_choose_bracket_"
+                                f"{match['bracket_match_id']}"
+                            ),
+                            width="stretch",
+                        ):
+                            st.session_state[choice_key] = label
+                            st.rerun()
+                    remaining_count = len(alternative_labels) - min(
+                        len(alternative_labels),
+                        3,
+                    )
+                    if remaining_count:
+                        st.caption(
+                            f"{remaining_count} more in the Live Bracket"
+                        )
     elif not bracket_state["champion_name"]:
         st.info("No Bracket Set is ready. An earlier result is still required.")
 
-    bracket_tab, forecast_tab = st.tabs(["Live Bracket", "Live Forecast"])
-    with bracket_tab:
-        clicked_code = bracket_visualization.render_bracket(
-            matches,
-            bracket_state["routes"],
-            selected_match_code=open_code,
-            component_key=f"control_bracket_component_{draft_id}",
-        )
-        if (
-            clicked_code
-            and clicked_code in visible_codes
-            and clicked_code != open_code
-        ):
-            st.session_state[dialog_key] = clicked_code
-            st.rerun()
-    with forecast_tab:
-        if not bracket_state["champion_name"]:
-            _render_live_bracket_forecast(
-                db_path=db_path,
-                draft_id=draft_id,
-                artifact_path=artifact_path,
-                player_names=player_names,
-            )
-        else:
-            st.success(
-                f"Champion: {bracket_state['champion_name']} · "
-                "Title probability 100%"
-            )
+    st.markdown("### Live Bracket")
+    clicked_code = bracket_visualization.render_bracket(
+        matches,
+        bracket_state["routes"],
+        selected_match_code=open_code,
+        component_key=f"control_bracket_component_{draft_id}",
+    )
+    if (
+        clicked_code
+        and clicked_code in visible_codes
+        and clicked_code != open_code
+    ):
+        st.session_state[dialog_key] = clicked_code
+        st.rerun()
 
     open_code = st.session_state.get(dialog_key)
     if open_code:
