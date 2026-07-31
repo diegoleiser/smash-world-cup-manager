@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from db.connection import open_sqlite_connection
+from smash_stats.elo_history import get_elo_ranking
+from smash_stats.elo_rules import (
+    ELO_START_RATING,
+    calculate_elo_change,
+)
 from tournament.bracket_constants import BRACKET_SIDE_LOSERS
 from tournament.bracket_finalization import get_draft_bracket_champion
 from tournament.group_stage_standings import (
@@ -24,6 +29,89 @@ from tournament.group_stage_standings import (
 
 FORMAT_GROUP_STAGE = "group_stage_double_elimination"
 connect_db = open_sqlite_connection
+
+
+def _draft_elo_preview(
+    db_path: str | Path,
+    player_ids: set[str],
+    group_matches: list[sqlite3.Row],
+    bracket_matches: list[sqlite3.Row],
+) -> dict[str, dict[str, float]]:
+    """Calculate draft Elo totals with the same rules as the archive."""
+
+    current_ranking = get_elo_ranking(
+        db_path,
+        active_only=False,
+    )
+    starting_ratings = {
+        player_id: ELO_START_RATING for player_id in player_ids
+    }
+    starting_ratings.update(
+        {
+            str(player["player_id"]): float(player["elo_exact"])
+            for player in current_ranking
+            if str(player["player_id"]) in player_ids
+        }
+    )
+    ratings = dict(starting_ratings)
+    rated_matches = [
+        match
+        for match in [*group_matches, *bracket_matches]
+        if str(match["status"]) == "completed"
+    ]
+    rated_matches.sort(
+        key=lambda match: (
+            match["completed_at"] is None,
+            str(match["completed_at"] or ""),
+            str(
+                match["group_match_id"]
+                if "group_match_id" in match.keys()
+                else match["bracket_match_id"]
+            ),
+        )
+    )
+    for match in rated_matches:
+        player_1_id = str(match["player_1_id"])
+        player_2_id = str(match["player_2_id"])
+        winner_id = str(match["winner_id"])
+        if winner_id not in {player_1_id, player_2_id}:
+            continue
+        loser_id = (
+            player_2_id if winner_id == player_1_id else player_1_id
+        )
+        player_1_score = (
+            int(match["player_1_score"])
+            if match["player_1_score"] is not None
+            else None
+        )
+        player_2_score = (
+            int(match["player_2_score"])
+            if match["player_2_score"] is not None
+            else None
+        )
+        winner_score = (
+            player_1_score if winner_id == player_1_id else player_2_score
+        )
+        loser_score = (
+            player_2_score if winner_id == player_1_id else player_1_score
+        )
+        change = calculate_elo_change(
+            ratings[winner_id],
+            ratings[loser_id],
+            winner_score=winner_score,
+            loser_score=loser_score,
+        )
+        ratings[winner_id] += change
+        ratings[loser_id] -= change
+
+    return {
+        player_id: {
+            "before": starting_ratings[player_id],
+            "after": ratings[player_id],
+            "change": ratings[player_id] - starting_ratings[player_id],
+        }
+        for player_id in player_ids
+    }
 
 
 def _get_bracket_match_loser_id(
@@ -416,12 +504,30 @@ def get_draft_finalization_preview(
                 + ", ".join(missing_names)
             )
 
+        elo_preview = _draft_elo_preview(
+            db_path,
+            participant_ids,
+            group_match_rows,
+            bracket_rows,
+        )
         placement_rows = sorted(
             [
                 {
                     "player_id": player_id,
                     "player": player_names[player_id],
                     "placement": placement,
+                    "initial_seed": next(
+                        (
+                            int(player["manual_seed"])
+                            for player in participant_rows
+                            if (
+                                str(player["player_id"])
+                                == player_id
+                                and player["manual_seed"] is not None
+                            )
+                        ),
+                        None,
+                    ),
                     "seed": next(
                         (
                             int(player["bracket_seed"])
@@ -434,6 +540,18 @@ def get_draft_finalization_preview(
                             )
                         ),
                         None,
+                    ),
+                    "elo_before": round(
+                        elo_preview[player_id]["before"],
+                        1,
+                    ),
+                    "elo_after": round(
+                        elo_preview[player_id]["after"],
+                        1,
+                    ),
+                    "elo_change": round(
+                        elo_preview[player_id]["change"],
+                        1,
                     ),
                 }
                 for player_id, placement in placements.items()

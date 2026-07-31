@@ -940,33 +940,46 @@ def _render_bracket_control_center(
                 2: "🥈",
                 3: "🥉",
             }
-            placement_rows = [
-                [
-                    (
-                        f"{medal_by_placement.get(int(placement['placement']), '')} "
-                        f"{'T-' if placement_counts[int(placement['placement'])] > 1 else ''}"
-                        f"{_ordinal(int(placement['placement']))}"
-                    ).strip(),
-                    str(placement["player"]),
-                    f"Seed #{int(placement['seed'])}",
-                    (
-                        f"▲ {int(placement['seed']) - int(placement['placement'])}"
-                        if int(placement["seed"]) > int(placement["placement"])
-                        else (
-                            f"▼ {int(placement['placement']) - int(placement['seed'])}"
-                            if int(placement["seed"]) < int(placement["placement"])
-                            else "= Seed"
-                        )
-                    ),
-                ]
-                for placement in placements
-            ]
+            placement_rows = []
+            for placement in placements:
+                placement_value = int(placement["placement"])
+                initial_seed = int(placement["initial_seed"])
+                elo_after = float(placement["elo_after"])
+                elo_change = float(placement["elo_change"])
+                placement_rows.append(
+                    [
+                        (
+                            f"{medal_by_placement.get(placement_value, '')} "
+                            f"{'T-' if placement_counts[placement_value] > 1 else ''}"
+                            f"{_ordinal(placement_value)}"
+                        ).strip(),
+                        str(placement["player"]),
+                        f"Seed #{initial_seed}",
+                        (
+                            f"▲ {initial_seed - placement_value}"
+                            if initial_seed > placement_value
+                            else (
+                                f"▼ {placement_value - initial_seed}"
+                                if initial_seed < placement_value
+                                else "= Seed"
+                            )
+                        ),
+                        f"{elo_after:.1f} ({elo_change:+.1f})",
+                    ]
+                )
             _render_control_table(
-                ["Placement", "Player", "Initial Seed", "Change"],
+                [
+                    "Placement",
+                    "Player",
+                    "Initial Seed",
+                    "Seed Change",
+                    "Elo (Change)",
+                ],
                 placement_rows,
                 columns=(
                     "minmax(7rem,0.8fr) minmax(12rem,2fr) "
-                    "minmax(7rem,0.75fr) minmax(6rem,0.7fr)"
+                    "minmax(7rem,0.75fr) minmax(7rem,0.7fr) "
+                    "minmax(8rem,0.85fr)"
                 ),
                 row_highlights={0: "winners"},
                 emphasis_column=1,

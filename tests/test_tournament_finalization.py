@@ -241,6 +241,48 @@ class TournamentFinalizationTests(unittest.TestCase):
         self.assertEqual(preview["automatic_bracket_matches_omitted"], 1)
         self.assertTrue(preview["ready"])
 
+    def test_preview_preserves_initial_seed_and_calculates_elo(self) -> None:
+        with tournament.connect_db(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE tournament_draft_participants
+                SET bracket_seed = NULL
+                WHERE draft_id = 'draft'
+                """
+            )
+            connection.executemany(
+                """
+                UPDATE tournament_draft_participants
+                SET bracket_seed = ?
+                WHERE draft_id = 'draft'
+                  AND player_id = ?
+                """,
+                [(4, "a"), (3, "b"), (2, "c"), (1, "d")],
+            )
+
+        preview = tournament.get_draft_finalization_preview(
+            self.db_path,
+            "draft",
+        )
+        by_player = {
+            row["player_id"]: row for row in preview["placements"]
+        }
+
+        self.assertEqual(by_player["a"]["initial_seed"], 1)
+        self.assertEqual(by_player["a"]["seed"], 4)
+        self.assertGreater(by_player["a"]["elo_change"], 0.0)
+        self.assertAlmostEqual(
+            sum(row["elo_change"] for row in preview["placements"]),
+            0.0,
+            places=1,
+        )
+        for row in preview["placements"]:
+            self.assertAlmostEqual(
+                row["elo_after"],
+                row["elo_before"] + row["elo_change"],
+                places=1,
+            )
+
     def test_cancelled_losers_match_places_worse_seed_first(
         self,
     ) -> None:
