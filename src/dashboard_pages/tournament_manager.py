@@ -938,7 +938,6 @@ def _render_bracket_control_center(
             chosen_label = next(iter(option_by_label))
         chosen = option_by_label[chosen_label]
         has_alternatives = len(option_by_label) > 1
-        card_height: int | str = 300 if has_alternatives else "content"
         if has_alternatives:
             action_column, alternatives_column = st.columns([1.45, 1])
         else:
@@ -959,7 +958,7 @@ def _render_bracket_control_center(
                     )
                     else 1.0 - chosen_forecast.player_1_win_probability
                 )
-            with st.container(border=True, height=card_height):
+            with st.container(border=True):
                 st.markdown(
                     (
                         '<div style="text-align:center;opacity:0.68;'
@@ -1020,7 +1019,7 @@ def _render_bracket_control_center(
                     for label in option_by_label
                     if label != chosen_label
                 ]
-                with st.container(border=True, height=card_height):
+                with st.container(border=True):
                     st.markdown(
                         """
                         <style>
@@ -1117,7 +1116,18 @@ def _render_bracket_control_center(
             None,
         )
         if selected_match is not None:
-            show_bracket_match_dialog(selected_match, dialog_key)
+            dialog_match = dict(selected_match)
+            selected_forecast = forecast_by_code.get(str(open_code))
+            if selected_forecast is not None:
+                dialog_match["_player_1_win_probability"] = (
+                    selected_forecast.player_1_win_probability
+                    if (
+                        str(selected_forecast.player_1_id)
+                        == str(selected_match["player_1_id"])
+                    )
+                    else 1.0 - selected_forecast.player_1_win_probability
+                )
+            show_bracket_match_dialog(dialog_match, dialog_key)
 
 
 def render_tournament_manager(

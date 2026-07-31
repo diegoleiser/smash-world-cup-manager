@@ -994,6 +994,27 @@ def show_archived_match_dialog(
             f'{html.escape(player_2_name)}'
             '</div>'
             '</div>'
+            + (
+                '<div style="'
+                'display:grid;'
+                'grid-template-columns:1fr 1fr;'
+                'gap:2rem;'
+                'margin:-0.75rem 0 1.25rem;'
+                'color:rgba(250,250,250,0.58);'
+                'font-size:0.82rem;'
+                '">'
+                '<div style="text-align:right;">'
+                f"{float(match['_player_1_win_probability']):.1%} "
+                'win chance'
+                '</div>'
+                '<div style="text-align:left;">'
+                f"{1.0 - float(match['_player_1_win_probability']):.1%} "
+                'win chance'
+                '</div>'
+                '</div>'
+                if match.get("_player_1_win_probability") is not None
+                else ""
+            )
         ),
         unsafe_allow_html=True,
     )
