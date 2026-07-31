@@ -869,6 +869,7 @@ def _render_bracket_control_center(
     artifact_path: Path,
     player_names: dict[str, str],
     show_bracket_match_dialog: Callable[..., None],
+    load_finalization_preview: Callable[[str], dict[str, Any]],
 ) -> None:
     """Render ready actions around the live Bracket visualization."""
 
@@ -891,6 +892,32 @@ def _render_bracket_control_center(
         played / total if total else 0.0,
         text=f"{played} of {total} Bracket Sets played",
     )
+    champion_name = bracket_state["champion_name"]
+    if champion_name:
+        st.success(f"Champion: {champion_name}")
+        try:
+            finalization_preview = load_finalization_preview(draft_id)
+        except ValueError as exc:
+            st.warning(str(exc))
+        else:
+            st.markdown("### Final Standings")
+            placement_rows = [
+                [
+                    str(placement["placement"]),
+                    str(placement["player"]),
+                    str(placement["seed"]),
+                ]
+                for placement in finalization_preview["placements"]
+            ]
+            _render_control_table(
+                ["#", "Player", "Seed"],
+                placement_rows,
+                columns=(
+                    "4rem minmax(12rem,2fr) minmax(5rem,0.65fr)"
+                ),
+                row_highlights={0: "winners"},
+                emphasis_column=1,
+            )
 
     dialog_key = f"open_bracket_match_code_{draft_id}"
     visible_codes = {
@@ -1088,10 +1115,10 @@ def _render_bracket_control_center(
                         st.caption(
                             f"{remaining_count} more in the Live Bracket"
                         )
-    elif not bracket_state["champion_name"]:
+    elif not champion_name:
         st.info("No Bracket Set is ready. An earlier result is still required.")
 
-    st.markdown("### Live Bracket")
+    st.markdown("### Final Bracket" if champion_name else "### Live Bracket")
     clicked_code = bracket_visualization.render_bracket(
         matches,
         bracket_state["routes"],
@@ -1457,7 +1484,6 @@ def render_tournament_manager(
             return
         if (
             bracket_generated
-            and not draft_bracket_state["champion_name"]
             and not show_detailed_management
         ):
             _render_bracket_control_center(
@@ -1467,10 +1493,13 @@ def render_tournament_manager(
                 artifact_path=model_artifact_path,
                 player_names=forecast_player_names,
                 show_bracket_match_dialog=show_bracket_match_dialog,
+                load_finalization_preview=(
+                    load_tournament_draft_finalization_preview
+                ),
             )
             st.caption(
-                "Use “Show detailed management” for complete Set lists, "
-                "result corrections, or Bracket resets."
+                "Use “Show detailed management” for finalization, complete "
+                "Set lists, result corrections, or Bracket resets."
             )
             return
 
