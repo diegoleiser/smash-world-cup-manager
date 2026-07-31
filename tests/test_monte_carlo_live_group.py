@@ -253,6 +253,78 @@ class LiveGroupForecastTests(unittest.TestCase):
         self.assertEqual(status_by_player["c"], LOSERS_LOCKED)
         self.assertNotIn(SIDE_OPEN, status_by_player.values())
 
+    def test_late_lock_uses_head_to_head_at_winners_boundary(self) -> None:
+        players = [
+            SimulationPlayer(
+                player_id=player_id,
+                display_name=player_id.upper(),
+                initial_seed=seed,
+                initial_elo=1100.0 - seed * 10,
+            )
+            for seed, player_id in enumerate(
+                ["a", "b", "c", "d", "e", "f"],
+                start=1,
+            )
+        ]
+        model = CombinedModel(
+            self.config,
+            {
+                player.player_id: PlayerParameters(
+                    player.player_id,
+                    player.display_name,
+                    0.5 - player.initial_seed * 0.2,
+                )
+                for player in players
+            },
+            {},
+        )
+        winners = {
+            ("a", "b"): "a",
+            ("a", "c"): "a",
+            ("a", "d"): "d",
+            ("a", "e"): "a",
+            ("b", "c"): "b",
+            ("b", "d"): "b",
+            ("b", "e"): "e",
+            ("c", "d"): "c",
+            ("c", "e"): "c",
+            ("d", "e"): "d",
+            ("a", "f"): "a",
+            ("b", "f"): "b",
+            ("c", "f"): "c",
+            ("e", "f"): "e",
+        }
+        matches = [
+            LiveGroupMatch(
+                player_1_id=player_1_id,
+                player_2_id=player_2_id,
+                status=GROUP_MATCH_COMPLETED,
+                winner_id=winner_id,
+                player_1_score=2 if winner_id == player_1_id else 1,
+                player_2_score=2 if winner_id == player_2_id else 1,
+            )
+            for (player_1_id, player_2_id), winner_id in winners.items()
+        ]
+        matches.append(
+            LiveGroupMatch("d", "f", GROUP_MATCH_PENDING)
+        )
+
+        forecast = forecast_live_group(
+            players,
+            matches,
+            model,
+            n_simulations=20,
+            random_seed=7,
+            winners_count=4,
+        )
+        status_by_player = {
+            player.player_id: player.winners_status
+            for player in forecast.players
+        }
+
+        self.assertEqual(status_by_player["d"], WINNERS_LOCKED)
+        self.assertEqual(status_by_player["e"], LOSERS_LOCKED)
+
     def test_draft_service_derives_winners_count_from_bracket_size(self) -> None:
         state = LiveDraftGroupState(
             draft_id="draft",

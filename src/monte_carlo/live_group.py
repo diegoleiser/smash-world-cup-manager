@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from itertools import product
 
 from monte_carlo.group_simulation import SimulationPlayer
 from monte_carlo.model import CombinedModel
@@ -68,6 +69,8 @@ class LiveGroupForecast:
 WINNERS_LOCKED = "Winners Locked"
 SIDE_OPEN = "Side Open"
 LOSERS_LOCKED = "Losers Locked"
+MAX_EXACT_LOCK_PENDING_SETS = 5
+POSSIBLE_PENDING_SCORELINES = ((2, 0), (2, 1), (0, 2), (1, 2))
 
 
 def _safe_winners_statuses(
@@ -119,6 +122,79 @@ def _safe_winners_statuses(
         else:
             statuses[player_id] = SIDE_OPEN
     return statuses
+
+
+def _exact_late_winners_statuses(
+    players: list[SimulationPlayer],
+    matches: list[LiveGroupMatch],
+    members: list[dict[str, object]],
+    elo_by_player_id: dict[str, float],
+    winners_count: int,
+) -> dict[str, str] | None:
+    """Resolve late-stage locks across every possible remaining scoreline."""
+
+    pending_matches = [
+        match for match in matches if match.status == GROUP_MATCH_PENDING
+    ]
+    if len(pending_matches) > MAX_EXACT_LOCK_PENDING_SETS:
+        return None
+
+    player_ids = {player.player_id for player in players}
+    always_qualified = set(player_ids)
+    ever_qualified: set[str] = set()
+    for scorelines in product(
+        POSSIBLE_PENDING_SCORELINES,
+        repeat=len(pending_matches),
+    ):
+        scoreline_iter = iter(scorelines)
+        completed_matches = []
+        for match in matches:
+            if match.status != GROUP_MATCH_PENDING:
+                completed_matches.append(match)
+                continue
+            player_1_score, player_2_score = next(scoreline_iter)
+            completed_matches.append(
+                LiveGroupMatch(
+                    player_1_id=match.player_1_id,
+                    player_2_id=match.player_2_id,
+                    status=GROUP_MATCH_COMPLETED,
+                    winner_id=(
+                        match.player_1_id
+                        if player_1_score > player_2_score
+                        else match.player_2_id
+                    ),
+                    player_1_score=player_1_score,
+                    player_2_score=player_2_score,
+                )
+            )
+        standings = calculate_group_standings(
+            members,
+            [
+                standing_match_dict(match)
+                for match in completed_matches
+            ],
+            elo_by_player_id,
+        )
+        qualified = {
+            str(row["player_id"])
+            for row in standings["standings"]
+            if int(row["placement"]) <= winners_count
+        }
+        always_qualified &= qualified
+        ever_qualified |= qualified
+
+    return {
+        player_id: (
+            WINNERS_LOCKED
+            if player_id in always_qualified
+            else (
+                LOSERS_LOCKED
+                if player_id not in ever_qualified
+                else SIDE_OPEN
+            )
+        )
+        for player_id in player_ids
+    }
 
 
 def _validate_live_group(
@@ -326,6 +402,15 @@ def forecast_live_group(
         current_by_player_id,
         winners_count,
     )
+    exact_statuses = _exact_late_winners_statuses(
+        players,
+        matches,
+        members,
+        elo_by_player_id,
+        winners_count,
+    )
+    if exact_statuses is not None:
+        statuses = exact_statuses
     if not pending_matches:
         statuses = {
             player.player_id: (
