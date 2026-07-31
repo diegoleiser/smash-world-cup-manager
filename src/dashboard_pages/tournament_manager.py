@@ -1119,7 +1119,7 @@ def _render_bracket_control_center(
             dialog_match = dict(selected_match)
             selected_forecast = forecast_by_code.get(str(open_code))
             if selected_forecast is not None:
-                dialog_match["_player_1_win_probability"] = (
+                player_1_win_probability = (
                     selected_forecast.player_1_win_probability
                     if (
                         str(selected_forecast.player_1_id)
@@ -1127,6 +1127,12 @@ def _render_bracket_control_center(
                     )
                     else 1.0 - selected_forecast.player_1_win_probability
                 )
+                dialog_match["player_1_win_probability"] = (
+                    player_1_win_probability
+                )
+                st.session_state[
+                    f"dialog_bracket_probability_{open_code}"
+                ] = player_1_win_probability
             show_bracket_match_dialog(dialog_match, dialog_key)
 
 
