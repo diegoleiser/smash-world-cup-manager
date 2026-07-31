@@ -938,6 +938,7 @@ def _render_bracket_control_center(
             chosen_label = next(iter(option_by_label))
         chosen = option_by_label[chosen_label]
         has_alternatives = len(option_by_label) > 1
+        card_height: int | str = 263 if has_alternatives else "content"
         if has_alternatives:
             action_column, alternatives_column = st.columns([1.45, 1])
         else:
@@ -958,7 +959,7 @@ def _render_bracket_control_center(
                     )
                     else 1.0 - chosen_forecast.player_1_win_probability
                 )
-            with st.container(border=True):
+            with st.container(border=True, height=card_height):
                 st.markdown(
                     (
                         '<div style="text-align:center;opacity:0.68;'
@@ -1019,7 +1020,7 @@ def _render_bracket_control_center(
                     for label in option_by_label
                     if label != chosen_label
                 ]
-                with st.container(border=True):
+                with st.container(border=True, height=card_height):
                     st.markdown(
                         """
                         <style>
@@ -1062,7 +1063,7 @@ def _render_bracket_control_center(
                         """,
                         unsafe_allow_html=True,
                     )
-                    for label in alternative_labels[:3]:
+                    for label in alternative_labels[:2]:
                         match = option_by_label[label]
                         if st.button(
                             (
@@ -1081,7 +1082,7 @@ def _render_bracket_control_center(
                             st.rerun()
                     remaining_count = len(alternative_labels) - min(
                         len(alternative_labels),
-                        3,
+                        2,
                     )
                     if remaining_count:
                         st.caption(
