@@ -988,6 +988,46 @@ def _render_bracket_control_center(
                 "▲ finished above the initial seed · "
                 "▼ finished below the initial seed"
             )
+            st.warning(
+                "Finalizing writes the tournament, participants, "
+                "placements, and set results to the permanent archive. "
+                "The draft can no longer be edited afterwards."
+            )
+            confirm_finalization = st.checkbox(
+                (
+                    f"I confirm that WC "
+                    f"{finalization_preview['tournament_number']:02d} "
+                    "is complete and ready for the archive."
+                ),
+                key=f"control_confirm_finalization_{draft_id}",
+            )
+            if st.button(
+                "Finalize Tournament",
+                type="primary",
+                width="stretch",
+                key=f"control_finalize_tournament_{draft_id}",
+                disabled=not confirm_finalization,
+            ):
+                try:
+                    result = tournament_manager.finalize_draft_tournament(
+                        db_path,
+                        draft_id,
+                    )
+                except ValueError as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(
+                        "The tournament could not be finalized: "
+                        f"{exc}"
+                    )
+                else:
+                    st.cache_data.clear()
+                    st.success(
+                        f"WC {result['tournament_number']:02d} "
+                        f"was archived successfully. "
+                        f"{result['matches_archived']} sets were added."
+                    )
+                    st.rerun()
 
     dialog_key = f"open_bracket_match_code_{draft_id}"
     visible_codes = {
@@ -1568,8 +1608,8 @@ def render_tournament_manager(
                 ),
             )
             st.caption(
-                "Use “Show detailed management” for finalization, complete "
-                "Set lists, result corrections, or Bracket resets."
+                "Use “Show detailed management” for complete Set lists, "
+                "result corrections, or Bracket resets."
             )
             return
 
