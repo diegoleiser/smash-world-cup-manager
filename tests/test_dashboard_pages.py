@@ -20,6 +20,9 @@ from dashboard_pages.forecast_format import (  # noqa: E402
 from dashboard_pages.tournament_control_center import (  # noqa: E402
     group_ready_matches,
 )
+from dashboard_pages.ui_components import (  # noqa: E402
+    clickable_card_button_styles,
+)
 
 
 class MatchupsPageBoundaryTests(unittest.TestCase):
@@ -167,6 +170,21 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
 
 
 class TournamentControlCenterTests(unittest.TestCase):
+    def test_clickable_card_styles_use_shared_hover_language(self) -> None:
+        styles = clickable_card_button_styles("example_card_")
+
+        self.assertIn('[class*="st-key-example_card_"]', styles)
+        self.assertIn("button:hover", styles)
+        self.assertIn("button:focus-visible", styles)
+        self.assertIn("transform: translateY(-1px)", styles)
+        self.assertIn("0 8px 24px rgba(59, 130, 246, 0.18)", styles)
+
+        focus_styles = clickable_card_button_styles(
+            "example_card_",
+            show_focus_ring=True,
+        )
+        self.assertIn("0 0 0 2px rgba(96, 165, 250, 0.22)", focus_styles)
+
     def test_group_up_next_balances_completed_set_counts(self) -> None:
         matches = [
             {

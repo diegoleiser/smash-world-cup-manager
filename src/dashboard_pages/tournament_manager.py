@@ -13,6 +13,7 @@ import bracket_visualization
 import tournament_manager
 from dashboard_pages.forecast_format import format_winners_probability
 from dashboard_pages.tournament_control_center import group_ready_matches
+from dashboard_pages.ui_components import clickable_card_button_styles
 from monte_carlo.artifacts import ArtifactError, load_artifact
 from monte_carlo.live_service import (
     forecast_live_draft_bracket,
@@ -718,50 +719,10 @@ def _render_group_control_center(
                 visible_alternatives = alternative_labels[:4]
                 with st.container(border=True, height=card_height):
                     st.markdown(
-                        """
-                        <style>
-                        [class*="st-key-control_choose_group_"] button {
-                            min-height: 4.35rem;
-                            padding: 0.65rem 0.9rem;
-                            text-align: left;
-                            transition:
-                                border-color 0.15s ease,
-                                box-shadow 0.15s ease,
-                                transform 0.15s ease;
-                        }
-                        [class*="st-key-control_choose_group_"] button:hover {
-                            border-color:
-                                var(--primary-color, rgb(255, 75, 75));
-                            box-shadow:
-                                0 2px 5px rgba(0, 0, 0, 0.32),
-                                0 8px 24px rgba(59, 130, 246, 0.18);
-                            transform: translateY(-1px);
-                        }
-                        [class*="st-key-control_choose_group_"]
-                        button:focus-visible {
-                            border-color:
-                                var(--primary-color, rgb(255, 75, 75));
-                            box-shadow:
-                                0 0 0 2px rgba(96, 165, 250, 0.22),
-                                0 8px 24px rgba(59, 130, 246, 0.18);
-                            transform: translateY(-1px);
-                        }
-                        [class*="st-key-control_choose_group_"] button p {
-                            width: 100%;
-                            color: rgba(250, 250, 250, 0.58);
-                            font-size: 0.78rem;
-                            line-height: 1.25;
-                            text-align: left;
-                        }
-                        [class*="st-key-control_choose_group_"] button strong {
-                            display: block;
-                            margin-bottom: 0.2rem;
-                            color: rgb(250, 250, 250);
-                            font-size: 1.25rem;
-                            line-height: 1.2;
-                        }
-                        </style>
-                        """,
+                        clickable_card_button_styles(
+                            "control_choose_group_",
+                            show_focus_ring=True,
+                        ),
                         unsafe_allow_html=True,
                     )
                     for label in visible_alternatives:
@@ -1159,45 +1120,10 @@ def _render_bracket_control_center(
                 ]
                 with st.container(border=True, height=card_height):
                     st.markdown(
-                        """
-                        <style>
-                        [class*="st-key-control_choose_bracket_"] button {
-                            min-height: 4.35rem;
-                            padding: 0.65rem 0.9rem;
-                            text-align: left;
-                            transition:
-                                border-color 0.15s ease,
-                                box-shadow 0.15s ease,
-                                transform 0.15s ease;
-                        }
-                        [class*="st-key-control_choose_bracket_"]
-                        button:hover,
-                        [class*="st-key-control_choose_bracket_"]
-                        button:focus-visible {
-                            border-color:
-                                var(--primary-color, rgb(255, 75, 75));
-                            box-shadow:
-                                0 2px 5px rgba(0, 0, 0, 0.32),
-                                0 8px 24px rgba(59, 130, 246, 0.18);
-                            transform: translateY(-1px);
-                        }
-                        [class*="st-key-control_choose_bracket_"] button p {
-                            width: 100%;
-                            color: rgba(250, 250, 250, 0.58);
-                            font-size: 0.78rem;
-                            line-height: 1.25;
-                            text-align: left;
-                        }
-                        [class*="st-key-control_choose_bracket_"]
-                        button strong {
-                            display: block;
-                            margin-bottom: 0.2rem;
-                            color: rgb(250, 250, 250);
-                            font-size: 1.18rem;
-                            line-height: 1.2;
-                        }
-                        </style>
-                        """,
+                        clickable_card_button_styles(
+                            "control_choose_bracket_",
+                            title_font_size="1.18rem",
+                        ),
                         unsafe_allow_html=True,
                     )
                     for label in alternative_labels[:2]:
