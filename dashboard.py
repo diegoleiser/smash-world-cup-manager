@@ -584,6 +584,7 @@ def load_tournament_detail(tournament_number: int) -> dict[str, Any]:
                 m.bracket_side,
                 m.challonge_match_id,
                 m.challonge_identifier,
+                m.challonge_group_id,
                 m.challonge_round,
                 m.suggested_play_order,
                 m.player_1_id,
@@ -882,6 +883,7 @@ def tournament_elo_changes(
 
         changes.append(
             {
+                "player_id": player_id,
                 "Players": str(participant["player"]),
                 "Elo Before": elo_before,
                 "Elo After": elo_after,

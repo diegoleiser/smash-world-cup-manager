@@ -22,10 +22,12 @@ from dashboard_pages.tournament_control_center import (  # noqa: E402
 )
 from dashboard_pages.tournaments import (  # noqa: E402
     _all_matches_table_rows,
+    _archived_group_tables,
     _elo_change_table_rows,
     _elo_ranking_expander_styles,
     _elo_snapshot_table_data,
     _final_standings_table_data,
+    _phase_match_table_rows,
 )
 from dashboard_pages.ui_components import (  # noqa: E402
     archived_match_result_html,
@@ -351,6 +353,132 @@ class TournamentControlCenterTests(unittest.TestCase):
 
 
 class TournamentPageTests(unittest.TestCase):
+    def test_phase_match_rows_omit_redundant_stage(self) -> None:
+        rows = _phase_match_table_rows(
+            [
+                {
+                    "stage": "group",
+                    "round_label": "Round 1",
+                    "score_known": True,
+                    "player_1": "Alpha",
+                    "player_2": "Beta",
+                    "player_1_score": 2,
+                    "player_2_score": 1,
+                    "winner": "Alpha",
+                }
+            ],
+            [],
+        )
+
+        self.assertEqual(
+            rows,
+            [["Round 1", "Alpha vs Beta", "2:1", "Alpha"]],
+        )
+
+    def test_archived_group_tables_reconstruct_and_separate_groups(
+        self,
+    ) -> None:
+        participants = [
+            {"player_id": "a", "player": "Alpha", "seed": 1},
+            {"player_id": "b", "player": "Beta", "seed": 2},
+            {"player_id": "c", "player": "Gamma", "seed": 3},
+            {"player_id": "d", "player": "Delta", "seed": 4},
+        ]
+        matches = [
+            {
+                "stage": "group",
+                "challonge_group_id": "one",
+                "player_1_id": "a",
+                "player_2_id": "b",
+                "winner_id": "a",
+                "player_1_score": 2,
+                "player_2_score": 0,
+                "walkover": False,
+            },
+            {
+                "stage": "group",
+                "challonge_group_id": "two",
+                "player_1_id": "c",
+                "player_2_id": "d",
+                "winner_id": "d",
+                "player_1_score": 1,
+                "player_2_score": 2,
+                "walkover": False,
+            },
+            {
+                "stage": "knockout",
+                "challonge_group_id": None,
+                "bracket_side": "winners",
+                "player_1_id": "a",
+                "player_2_id": "c",
+                "winner_id": "a",
+                "player_1_score": 2,
+                "player_2_score": 1,
+                "walkover": False,
+            },
+            {
+                "stage": "knockout",
+                "challonge_group_id": None,
+                "bracket_side": "losers",
+                "player_1_id": "b",
+                "player_2_id": "d",
+                "winner_id": "b",
+                "player_1_score": 2,
+                "player_2_score": 1,
+                "walkover": False,
+            },
+        ]
+        changes = [
+            {"player_id": player_id, "Elo Before": 1000.0}
+            for player_id in ("a", "b", "c", "d")
+        ]
+
+        tables = _archived_group_tables(matches, participants, changes)
+
+        self.assertEqual(
+            [table["name"] for table in tables],
+            ["Group A", "Group B"],
+        )
+        self.assertEqual(
+            tables[0]["rows"],
+            [
+                ["#1", "Alpha", "1–0", "2–0", "▲ +2"],
+                ["#2", "Beta", "0–1", "0–2", "▼ -2"],
+            ],
+        )
+        self.assertEqual(tables[0]["highlights"], {0: "winners"})
+        self.assertEqual(tables[1]["rows"][0][1], "Delta")
+        self.assertEqual(tables[1]["highlights"], {1: "winners"})
+
+    def test_archived_group_tables_support_internal_archives(self) -> None:
+        tables = _archived_group_tables(
+            [
+                {
+                    "stage": "group_stage",
+                    "round_label": "Group A · Round 1",
+                    "challonge_group_id": None,
+                    "player_1_id": "a",
+                    "player_2_id": "b",
+                    "winner_id": "b",
+                    "player_1_score": 0,
+                    "player_2_score": 2,
+                    "walkover": False,
+                }
+            ],
+            [
+                {"player_id": "a", "player": "Alpha", "seed": 1},
+                {"player_id": "b", "player": "Beta", "seed": 2},
+            ],
+            [
+                {"player_id": "a", "Elo Before": 1000.0},
+                {"player_id": "b", "Elo Before": 1000.0},
+            ],
+        )
+
+        self.assertEqual(len(tables), 1)
+        self.assertEqual(tables[0]["name"], "Group Stage")
+        self.assertEqual(tables[0]["rows"][0][1], "Beta")
+
     def test_elo_snapshot_rows_format_rank_rating_and_participation(
         self,
     ) -> None:

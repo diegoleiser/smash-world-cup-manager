@@ -16,6 +16,7 @@ from tournament.archived_bracket import (
     build_archived_bracket_matches,
     build_archived_bracket_routes,
 )
+from tournament.group_stage_standings import calculate_group_standings
 
 
 def _final_standings_table_data(
@@ -103,6 +104,21 @@ def _all_matches_table_rows(
             ]
         )
     return rows
+
+
+def _phase_match_table_rows(
+    matches: list[dict[str, Any]],
+    archived_bracket_matches: list[dict[str, Any]],
+) -> list[list[str]]:
+    """Build match rows without the redundant stage column."""
+
+    return [
+        row[1:]
+        for row in _all_matches_table_rows(
+            matches,
+            archived_bracket_matches,
+        )
+    ]
 
 
 def _elo_change_table_rows(
@@ -195,6 +211,147 @@ def _elo_ranking_expander_styles() -> str:
     """
 
 
+def _archived_group_tables(
+    matches: list[dict[str, Any]],
+    participants: list[dict[str, Any]],
+    changes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Reconstruct final group tables from archived match results."""
+
+    def group_key(match: dict[str, Any]) -> str | None:
+        stage = str(match.get("stage") or "")
+        if stage not in {"group", "group_stage"}:
+            return None
+        challonge_group_id = match.get("challonge_group_id")
+        if challonge_group_id is not None:
+            return f"challonge:{challonge_group_id}"
+        round_label = str(match.get("round_label") or "")
+        if " · " in round_label:
+            return f"internal:{round_label.split(' · ', 1)[0]}"
+        return "group-stage"
+
+    group_matches = [
+        match
+        for match in matches
+        if group_key(match) is not None
+    ]
+    group_ids = list(
+        dict.fromkeys(str(group_key(match)) for match in group_matches)
+    )
+    participants_by_id = {
+        str(participant["player_id"]): participant
+        for participant in participants
+    }
+    elo_by_player_id = {
+        str(change["player_id"]): float(change["Elo Before"])
+        for change in changes
+    }
+    first_bracket_side_by_player: dict[str, str] = {}
+    for match in matches:
+        if str(match.get("stage") or "") not in {"knockout", "bracket"}:
+            continue
+        bracket_side = str(match.get("bracket_side") or "")
+        for player_key in ("player_1_id", "player_2_id"):
+            first_bracket_side_by_player.setdefault(
+                str(match[player_key]),
+                bracket_side,
+            )
+    winners_bracket_entrants = {
+        player_id
+        for player_id, bracket_side in first_bracket_side_by_player.items()
+        if bracket_side == "winners"
+    }
+    tables = []
+
+    for group_index, group_id in enumerate(group_ids):
+        matches_in_group = [
+            match
+            for match in group_matches
+            if group_key(match) == group_id
+        ]
+        member_ids = list(
+            dict.fromkeys(
+                str(player_id)
+                for match in matches_in_group
+                for player_id in (
+                    match["player_1_id"],
+                    match["player_2_id"],
+                )
+            )
+        )
+        members = []
+        for fallback_seed, player_id in enumerate(member_ids, start=1):
+            participant = participants_by_id[player_id]
+            members.append(
+                {
+                    "player_id": player_id,
+                    "player": participant["player"],
+                    "initial_seed": participant.get("seed") or fallback_seed,
+                }
+            )
+
+        normalized_matches = []
+        for match in matches_in_group:
+            if match.get("winner_id") is None:
+                status = "pending"
+            elif match.get("walkover"):
+                status = "forfeit"
+            else:
+                status = "completed"
+            normalized_matches.append(
+                {
+                    **match,
+                    "status": status,
+                }
+            )
+
+        standings = calculate_group_standings(
+            members,
+            normalized_matches,
+            elo_by_player_id,
+        )["standings"]
+        rows = []
+        for standing in standings:
+            game_difference = (
+                int(standing["games_won"])
+                - int(standing["games_lost"])
+            )
+            if game_difference > 0:
+                difference_text = f"▲ +{game_difference}"
+            elif game_difference < 0:
+                difference_text = f"▼ {game_difference}"
+            else:
+                difference_text = "= 0"
+            rows.append(
+                [
+                    f"#{int(standing['placement'])}",
+                    str(standing["player"]),
+                    f"{standing['sets_won']}–{standing['sets_lost']}",
+                    f"{standing['games_won']}–{standing['games_lost']}",
+                    difference_text,
+                ]
+            )
+
+        tables.append(
+            {
+                "name": (
+                    "Group Stage"
+                    if len(group_ids) == 1
+                    else f"Group {chr(65 + group_index)}"
+                ),
+                "rows": rows,
+                "highlights": {
+                    row_index: "winners"
+                    for row_index, standing in enumerate(standings)
+                    if str(standing["player_id"])
+                    in winners_bracket_entrants
+                },
+            }
+        )
+
+    return tables
+
+
 def render_tournaments(
     *,
     include_inactive: bool,
@@ -256,6 +413,21 @@ def render_tournaments(
         participants,
         include_inactive=include_inactive,
     )
+    group_tables = _archived_group_tables(
+        matches,
+        participants,
+        changes,
+    )
+    group_phase_matches = [
+        match
+        for match in matches
+        if str(match.get("stage") or "") in {"group", "group_stage"}
+    ]
+    bracket_phase_matches = [
+        match
+        for match in matches
+        if match not in group_phase_matches
+    ]
 
     tournament_milestones = load_tournament_milestones(
         selected_tournament_number,
@@ -295,19 +467,62 @@ def render_tournaments(
 
     st.info(tournament_recap)
 
-    (
-        tab_bracket,
-        tab_overview,
-        tab_matches,
-        tab_elo,
-    ) = st.tabs(
-        [
-            "Bracket",
-            "Participants & Results",
-            "All Matches",
-            "Elo After Tournament",
-        ]
-    )
+    tab_labels = []
+    if group_tables:
+        tab_labels.append("Group Stage")
+    tab_labels.append("Bracket")
+    tab_labels.extend(["Final Results", "Elo After Tournament"])
+    tab_iterator = iter(st.tabs(tab_labels))
+    tab_groups = next(tab_iterator) if group_tables else None
+    tab_bracket = next(tab_iterator)
+    tab_overview = next(tab_iterator)
+    tab_elo = next(tab_iterator)
+
+    if tab_groups is not None:
+        with tab_groups:
+            st.caption(
+                "Highlighted players advanced to the Winners Bracket."
+            )
+            for table in group_tables:
+                st.subheader(table["name"])
+                st.markdown(
+                    dashboard_table_html(
+                        [
+                            "Rank",
+                            "Player",
+                            "Set Record",
+                            "Game Record",
+                            "Game Diff",
+                        ],
+                        table["rows"],
+                        columns=(
+                            "minmax(4.5rem,0.5fr) minmax(10rem,1.5fr) "
+                            "minmax(7rem,0.8fr) minmax(7rem,0.8fr) "
+                            "minmax(6rem,0.7fr)"
+                        ),
+                        row_highlights=table["highlights"],
+                        emphasis_column=1,
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+            st.divider()
+            st.subheader("Group Matches")
+            st.markdown(
+                dashboard_table_html(
+                    ["Round", "Set", "Result", "Winner"],
+                    _phase_match_table_rows(
+                        group_phase_matches,
+                        archived_bracket_matches,
+                    ),
+                    columns=(
+                        "minmax(8rem,1fr) minmax(14rem,2fr) "
+                        "minmax(5rem,0.6fr) minmax(8rem,1fr)"
+                    ),
+                    emphasis_column=1,
+                ),
+                unsafe_allow_html=True,
+            )
 
     with tab_overview:
         st.subheader("Final Standings")
@@ -430,26 +645,25 @@ def render_tournaments(
                 "for this tournament."
             )
 
-    with tab_matches:
-        if matches:
-            match_rows = _all_matches_table_rows(
-                matches,
-                archived_bracket_matches,
-            )
+        if bracket_phase_matches:
+            st.divider()
+            st.subheader("Bracket Matches")
             st.markdown(
                 dashboard_table_html(
-                    ["Stage", "Round", "Set", "Result", "Winner"],
-                    match_rows,
-                    columns=(
-                        "minmax(6rem,0.7fr) minmax(8rem,1fr) "
-                        "minmax(14rem,2fr) minmax(5rem,0.6fr) "
-                        "minmax(8rem,1fr)"
+                    ["Round", "Set", "Result", "Winner"],
+                    _phase_match_table_rows(
+                        bracket_phase_matches,
+                        archived_bracket_matches,
                     ),
-                    emphasis_column=2,
+                    columns=(
+                        "minmax(8rem,1fr) minmax(14rem,2fr) "
+                        "minmax(5rem,0.6fr) minmax(8rem,1fr)"
+                    ),
+                    emphasis_column=1,
                 ),
                 unsafe_allow_html=True,
             )
-        else:
+        elif not matches:
             st.info("No match data is stored for this tournament.")
 
     with tab_elo:
