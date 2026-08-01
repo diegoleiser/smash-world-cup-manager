@@ -22,6 +22,7 @@ from dashboard_pages.tournament_control_center import (  # noqa: E402
 )
 from dashboard_pages.tournaments import (  # noqa: E402
     _all_matches_table_rows,
+    _elo_change_table_rows,
     _final_standings_table_data,
 )
 from dashboard_pages.ui_components import (  # noqa: E402
@@ -114,6 +115,7 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
             "tournaments",
             "render_tournaments",
             {
+                "include_inactive",
                 "load_tournaments",
                 "load_tournament_detail",
                 "load_tournament_milestones",
@@ -122,6 +124,36 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
                 "show_archived_match_dialog",
             },
         )
+
+    def test_tournament_ranks_follow_inactive_player_filter(self) -> None:
+        dashboard_tree = ast.parse(
+            (PROJECT_ROOT / "dashboard.py").read_text()
+        )
+        elo_changes_function = next(
+            node
+            for node in dashboard_tree.body
+            if (
+                isinstance(node, ast.FunctionDef)
+                and node.name == "tournament_elo_changes"
+            )
+        )
+        timeline_call = next(
+            node
+            for node in ast.walk(elo_changes_function)
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "load_player_timeline"
+            )
+        )
+        inactive_keyword = next(
+            keyword
+            for keyword in timeline_call.keywords
+            if keyword.arg == "include_inactive"
+        )
+
+        self.assertIsInstance(inactive_keyword.value, ast.Name)
+        self.assertEqual(inactive_keyword.value.id, "include_inactive")
 
     def test_home_declares_every_data_dependency(self) -> None:
         self.assert_render_parameters(
@@ -317,6 +349,47 @@ class TournamentControlCenterTests(unittest.TestCase):
 
 
 class TournamentPageTests(unittest.TestCase):
+    def test_elo_change_rows_group_values_and_preserve_unranked_states(
+        self,
+    ) -> None:
+        rows = _elo_change_table_rows(
+            [
+                {
+                    "Players": "Alpha",
+                    "Elo Before": 1000.0,
+                    "Elo After": 1015.625,
+                    "Elo Change": 15.625,
+                    "Rank Before": None,
+                    "Rank After": 2,
+                },
+                {
+                    "Players": "Beta",
+                    "Elo Before": 1042.5,
+                    "Elo After": 1030.0,
+                    "Elo Change": -12.5,
+                    "Rank Before": 2,
+                    "Rank After": 3,
+                },
+                {
+                    "Players": "Gamma",
+                    "Elo Before": 1000.0,
+                    "Elo After": 1000.0,
+                    "Elo Change": 0.0,
+                    "Rank Before": None,
+                    "Rank After": None,
+                },
+            ]
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ["Alpha", "1000.0 → 1015.6", "▲ +15.6", "Unranked → #2"],
+                ["Beta", "1042.5 → 1030.0", "▼ -12.5", "#2 → #3"],
+                ["Gamma", "1000.0 → 1000.0", "= 0.0", "Unranked → Unranked"],
+            ],
+        )
+
     def test_archived_dialog_uses_its_state_clearing_close_button(
         self,
     ) -> None:

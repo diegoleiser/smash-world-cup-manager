@@ -105,8 +105,46 @@ def _all_matches_table_rows(
     return rows
 
 
+def _elo_change_table_rows(
+    changes: list[dict[str, Any]],
+) -> list[list[str]]:
+    """Build compact before/after rows for archived Elo changes."""
+
+    rows = []
+    for change in changes:
+        elo_change = float(change["Elo Change"])
+        if elo_change > 0:
+            change_text = f"▲ {elo_change:+.1f}"
+        elif elo_change < 0:
+            change_text = f"▼ {elo_change:+.1f}"
+        else:
+            change_text = "= 0.0"
+
+        rank_before = change["Rank Before"]
+        rank_after = change["Rank After"]
+        rank_before_text = (
+            f"#{int(rank_before)}" if rank_before is not None else "Unranked"
+        )
+        rank_after_text = (
+            f"#{int(rank_after)}" if rank_after is not None else "Unranked"
+        )
+        rows.append(
+            [
+                str(change["Players"]),
+                (
+                    f"{float(change['Elo Before']):.1f} → "
+                    f"{float(change['Elo After']):.1f}"
+                ),
+                change_text,
+                f"{rank_before_text} → {rank_after_text}",
+            ]
+        )
+    return rows
+
+
 def render_tournaments(
     *,
+    include_inactive: bool,
     load_tournaments: Callable[..., list[dict[str, Any]]],
     load_tournament_detail: Callable[..., dict[str, Any]],
     load_tournament_milestones: Callable[..., list[dict[str, Any]]],
@@ -163,6 +201,7 @@ def render_tournaments(
     changes = tournament_elo_changes(
         selected_tournament_number,
         participants,
+        include_inactive=include_inactive,
     )
 
     tournament_milestones = load_tournament_milestones(
@@ -430,19 +469,17 @@ def render_tournaments(
                 width="stretch",
             )
 
-            st.dataframe(
-                change_df,
-                hide_index=True,
-                width="stretch",
-                column_config={
-                    "Elo Before": st.column_config.NumberColumn(format="%.1f"),
-                    "Elo After": st.column_config.NumberColumn(format="%.1f"),
-                    "Elo Change": st.column_config.NumberColumn(
-                        format="%+.1f"
+            st.markdown(
+                dashboard_table_html(
+                    ["Player", "Elo Before → After", "Change", "Rank"],
+                    _elo_change_table_rows(changes),
+                    columns=(
+                        "minmax(10rem,1.4fr) minmax(11rem,1.2fr) "
+                        "minmax(6rem,0.7fr) minmax(10rem,1fr)"
                     ),
-                    "Rank Before": st.column_config.NumberColumn(format="%d"),
-                    "Rank After": st.column_config.NumberColumn(format="%d"),
-                },
+                    emphasis_column=0,
+                ),
+                unsafe_allow_html=True,
             )
 
         snapshot = detail["elo_snapshot"]

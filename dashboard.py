@@ -838,6 +838,7 @@ def show_home(include_inactive: bool) -> None:
 def tournament_elo_changes(
     tournament_number: int,
     participants: list[dict[str, Any]],
+    include_inactive: bool,
 ) -> list[dict[str, Any]]:
     """Calculates Elo and ranking changes for tournament participants."""
 
@@ -845,7 +846,10 @@ def tournament_elo_changes(
 
     for participant in participants:
         player_id = str(participant["player_id"])
-        timeline = load_player_timeline(player_id)
+        timeline = load_player_timeline(
+            player_id,
+            include_inactive=include_inactive,
+        )
         current_index = next(
             (
                 index
@@ -1021,10 +1025,11 @@ def format_ordinal(value: int) -> str:
 
     return f"{value}{suffix}"
 
-def show_tournaments() -> None:
+def show_tournaments(include_inactive: bool) -> None:
     """Render the Tournaments page through its focused page module."""
 
     tournaments_page.render_tournaments(
+        include_inactive=include_inactive,
         load_tournaments=load_tournaments,
         load_tournament_detail=load_tournament_detail,
         load_tournament_milestones=load_tournament_milestones,
@@ -1428,7 +1433,7 @@ def main() -> None:
     elif page == "Matchups":
         show_matchups(include_inactive)
     elif page == "Tournaments":
-        show_tournaments()
+        show_tournaments(include_inactive)
     elif page == "Tournament Manager":
         show_tournament_manager()
     elif page == "Monte Carlo":
