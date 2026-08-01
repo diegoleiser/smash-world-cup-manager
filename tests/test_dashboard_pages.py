@@ -25,6 +25,7 @@ from dashboard_pages.tournaments import (  # noqa: E402
     _final_standings_table_data,
 )
 from dashboard_pages.ui_components import (  # noqa: E402
+    archived_match_result_html,
     clickable_card_button_styles,
     compact_score_input_styles,
     dashboard_table_html,
@@ -316,6 +317,53 @@ class TournamentControlCenterTests(unittest.TestCase):
 
 
 class TournamentPageTests(unittest.TestCase):
+    def test_archived_dialog_uses_its_state_clearing_close_button(
+        self,
+    ) -> None:
+        dashboard_tree = ast.parse((PROJECT_ROOT / "dashboard.py").read_text())
+        dialog_function = next(
+            node
+            for node in dashboard_tree.body
+            if (
+                isinstance(node, ast.FunctionDef)
+                and node.name == "show_archived_match_dialog"
+            )
+        )
+        dialog_decorator = next(
+            decorator
+            for decorator in dialog_function.decorator_list
+            if isinstance(decorator, ast.Call)
+        )
+        dismissible = next(
+            keyword.value
+            for keyword in dialog_decorator.keywords
+            if keyword.arg == "dismissible"
+        )
+
+        self.assertIsInstance(dismissible, ast.Constant)
+        self.assertIs(dismissible.value, False)
+
+    def test_archived_result_card_preserves_context_status_and_escaping(
+        self,
+    ) -> None:
+        markup = archived_match_result_html(
+            "WC 18 · Winners Final · W4M1",
+            "A & B",
+            "<Player>",
+            "2–1",
+            winner_name="A & B",
+            status_label="Played",
+        )
+
+        self.assertIn("WC 18 · Winners Final · W4M1", markup)
+        self.assertIn("A &amp; B", markup)
+        self.assertIn("&lt;Player&gt;", markup)
+        self.assertNotIn("<Player>", markup)
+        self.assertIn("2–1", markup)
+        self.assertIn("Winner · <strong>A &amp; B</strong>", markup)
+        self.assertIn("Status · <strong>Played</strong>", markup)
+        self.assertIn("rgb(74, 222, 128)", markup)
+
     def test_all_matches_rows_preserve_scores_rounds_and_pending_winners(
         self,
     ) -> None:

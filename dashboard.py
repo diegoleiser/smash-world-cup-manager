@@ -27,7 +27,10 @@ try:
     from dashboard_pages import player as player_page
     from dashboard_pages import tournaments as tournaments_page
     from dashboard_pages import tournament_manager as tournament_manager_page
-    from dashboard_pages.ui_components import compact_score_input_styles
+    from dashboard_pages.ui_components import (
+        archived_match_result_html,
+        compact_score_input_styles,
+    )
     import milestones
     import narratives
     import smash_statistics as stats
@@ -922,6 +925,7 @@ def show_matchups(include_inactive: bool) -> None:
 @st.dialog(
     "Archived Match",
     width="medium",
+    dismissible=False,
 )
 def show_archived_match_dialog(
     match: dict[str, Any],
@@ -935,15 +939,6 @@ def show_archived_match_dialog(
     )
     player_2_name = str(
         match.get("player_2_name") or "Unknown"
-    )
-
-    st.markdown(
-        f"### {match['match_code']}"
-    )
-
-    st.caption(
-        f"WC {tournament_number:02d} · "
-        f"{match['round_label']}"
     )
 
     player_1_score = match.get(
@@ -965,61 +960,34 @@ def show_archived_match_dialog(
     else:
         score_text = "–"
 
-    st.markdown(
-        (
-            '<div style="'
-            'display:grid;'
-            'grid-template-columns:1fr auto 1fr;'
-            'align-items:center;'
-            'gap:1rem;'
-            'margin:1rem 0 1.25rem 0;'
-            '">'
-            '<div style="'
-            'text-align:right;'
-            'font-size:1.6rem;'
-            'font-weight:750;'
-            '">'
-            f'{html.escape(player_1_name)}'
-            '</div>'
-            '<div style="'
-            'font-size:1.4rem;'
-            'font-weight:800;'
-            '">'
-            f'{html.escape(score_text)}'
-            '</div>'
-            '<div style="'
-            'text-align:left;'
-            'font-size:1.6rem;'
-            'font-weight:750;'
-            '">'
-            f'{html.escape(player_2_name)}'
-            '</div>'
-            '</div>'
-        ),
-        unsafe_allow_html=True,
-    )
-
     winner_name = match.get(
         "winner_name"
     )
-
-    detail_cols = st.columns(2)
-
-    detail_cols[0].metric(
-        "Winner",
-        winner_name or "Unknown",
-    )
-
-    detail_cols[1].metric(
-        "Status",
-        {
+    status_label = {
             "completed": "Played",
             "forfeit": "W–L",
             "waiting": "Waiting",
-        }.get(
-            str(match.get("status")),
-            str(match.get("status") or "Unknown").title(),
+    }.get(
+        str(match.get("status")),
+        str(match.get("status") or "Unknown").title(),
+    )
+    st.markdown(
+        archived_match_result_html(
+            (
+                f"WC {tournament_number:02d} · "
+                f"{match['round_label']} · {match['match_code']}"
+            ),
+            player_1_name,
+            player_2_name,
+            score_text,
+            winner_name=(str(winner_name) if winner_name else None),
+            status_label=status_label,
         ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div style="height:0.65rem;"></div>',
+        unsafe_allow_html=True,
     )
 
     if st.button(

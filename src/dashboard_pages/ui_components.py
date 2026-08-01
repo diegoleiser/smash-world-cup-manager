@@ -5,6 +5,72 @@ from __future__ import annotations
 import html
 
 
+def archived_match_result_html(
+    context_label: str,
+    player_1_name: str,
+    player_2_name: str,
+    score_text: str,
+    *,
+    winner_name: str | None,
+    status_label: str,
+) -> str:
+    """Return a compact read-only result card for an archived set."""
+
+    player_1_color = (
+        "rgb(74, 222, 128)"
+        if winner_name == player_1_name
+        else "rgb(250, 250, 250)"
+    )
+    player_2_color = (
+        "rgb(74, 222, 128)"
+        if winner_name == player_2_name
+        else "rgb(250, 250, 250)"
+    )
+    return (
+        '<div style="overflow:hidden;'
+        'border:1px solid rgba(128,128,128,0.30);'
+        'border-radius:0.8rem;">'
+        '<div style="padding:0.7rem 1rem;'
+        'border-bottom:1px solid rgba(128,128,128,0.24);'
+        'background:rgba(128,128,128,0.08);'
+        'color:rgba(250,250,250,0.58);'
+        'font-size:0.75rem;font-weight:750;'
+        'letter-spacing:0.035em;text-align:center;'
+        'text-transform:uppercase;">'
+        f"{html.escape(context_label)}"
+        "</div>"
+        '<div style="display:grid;'
+        'grid-template-columns:1fr auto 1fr;'
+        'align-items:center;gap:1rem;'
+        'min-height:6.2rem;padding:1rem 1.25rem;">'
+        '<div style="text-align:right;font-size:1.65rem;'
+        f'font-weight:800;color:{player_1_color};">'
+        f"{html.escape(player_1_name)}"
+        "</div>"
+        '<div style="font-size:1.6rem;font-weight:850;'
+        'color:rgb(250,250,250);">'
+        f"{html.escape(score_text)}"
+        "</div>"
+        '<div style="text-align:left;font-size:1.65rem;'
+        f'font-weight:800;color:{player_2_color};">'
+        f"{html.escape(player_2_name)}"
+        "</div>"
+        "</div>"
+        '<div style="display:grid;grid-template-columns:1fr 1fr;'
+        'gap:1rem;padding:0.75rem 1rem;'
+        'border-top:1px solid rgba(128,128,128,0.20);'
+        'background:rgba(255,255,255,0.018);'
+        'color:rgba(250,250,250,0.66);font-size:0.82rem;">'
+        '<div style="text-align:left;">Winner · '
+        f"<strong>{html.escape(winner_name or 'Unknown')}</strong>"
+        "</div>"
+        '<div style="text-align:right;">Status · '
+        f"<strong>{html.escape(status_label)}</strong>"
+        "</div>"
+        "</div></div>"
+    )
+
+
 def up_next_matchup_html(
     context_label: str,
     player_1_name: str,
