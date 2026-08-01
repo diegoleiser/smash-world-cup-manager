@@ -22,6 +22,7 @@ from dashboard_pages.tournament_control_center import (  # noqa: E402
 )
 from dashboard_pages.ui_components import (  # noqa: E402
     clickable_card_button_styles,
+    dashboard_table_html,
 )
 
 
@@ -170,6 +171,26 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
 
 
 class TournamentControlCenterTests(unittest.TestCase):
+    def test_dashboard_table_preserves_visual_states_and_escapes_text(
+        self,
+    ) -> None:
+        markup = dashboard_table_html(
+            ["Player", "Change"],
+            [["A & B", "▲ 2"], ["<Player>", "▼ 1"]],
+            columns="2fr 1fr",
+            row_highlights={0: "winners", 1: "losers"},
+            emphasis_column=0,
+        )
+
+        self.assertIn("control-table-row-winners", markup)
+        self.assertIn("control-table-row-losers", markup)
+        self.assertIn("control-table-emphasis", markup)
+        self.assertIn("control-table-positive", markup)
+        self.assertIn("control-table-negative", markup)
+        self.assertIn("A &amp; B", markup)
+        self.assertIn("&lt;Player&gt;", markup)
+        self.assertNotIn("<Player>", markup)
+
     def test_clickable_card_styles_use_shared_hover_language(self) -> None:
         styles = clickable_card_button_styles("example_card_")
 

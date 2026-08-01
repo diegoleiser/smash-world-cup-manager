@@ -2,6 +2,137 @@
 
 from __future__ import annotations
 
+import html
+
+
+def dashboard_table_html(
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    columns: str,
+    row_highlights: dict[int, str] | None = None,
+    emphasis_column: int | None = None,
+) -> str:
+    """Return markup for a compact table in the dashboard visual language."""
+
+    row_highlights = row_highlights or {}
+    header_html = "".join(
+        f"<div>{html.escape(header)}</div>" for header in headers
+    )
+    row_html = []
+    for row_index, row in enumerate(rows):
+        cells = []
+        for column_index, value in enumerate(row):
+            value_text = str(value)
+            emphasis_class = (
+                " control-table-emphasis"
+                if column_index == emphasis_column
+                else ""
+            )
+            movement_class = (
+                " control-table-positive"
+                if value_text.startswith("▲")
+                else (
+                    " control-table-negative"
+                    if value_text.startswith("▼")
+                    else ""
+                )
+            )
+            cells.append(
+                f'<div class="control-table-cell{emphasis_class}'
+                f'{movement_class}">'
+                f"{html.escape(value_text)}</div>"
+            )
+        highlight = row_highlights.get(row_index)
+        highlight_class = (
+            f" control-table-row-{highlight}" if highlight else ""
+        )
+        row_html.append(
+            f'<div class="control-table-row{highlight_class}">'
+            f"{''.join(cells)}</div>"
+        )
+
+    return (
+        """
+        <style>
+        .control-table {
+            overflow: hidden;
+            border: 1px solid rgba(128, 128, 128, 0.30);
+            border-radius: 0.8rem;
+        }
+        .control-table-header,
+        .control-table-row {
+            display: grid;
+            grid-template-columns: var(--control-table-columns);
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.7rem 1rem;
+        }
+        .control-table-header {
+            min-height: 2.6rem;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.24);
+            background: rgba(128, 128, 128, 0.08);
+            color: rgba(250, 250, 250, 0.55);
+            font-size: 0.72rem;
+            font-weight: 750;
+            letter-spacing: 0.035em;
+            text-transform: uppercase;
+        }
+        .control-table-row {
+            min-height: 3.65rem;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.20);
+            transition: background-color 0.15s ease;
+        }
+        .control-table-row:last-child {
+            border-bottom: none;
+        }
+        .control-table-row:hover {
+            background: rgba(128, 128, 128, 0.055);
+        }
+        .control-table-row-winners {
+            background: rgba(34, 197, 94, 0.07);
+        }
+        .control-table-row-losers {
+            background: rgba(245, 158, 11, 0.07);
+        }
+        .control-table-cell {
+            min-width: 0;
+            overflow: hidden;
+            color: rgba(250, 250, 250, 0.76);
+            font-size: 0.88rem;
+            font-weight: 650;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .control-table-emphasis {
+            color: rgb(250, 250, 250);
+            font-size: 1.02rem;
+            font-weight: 800;
+        }
+        .control-table-positive {
+            color: rgb(74, 222, 128);
+        }
+        .control-table-negative {
+            color: rgb(248, 113, 113);
+        }
+        @media (max-width: 900px) {
+            .control-table-scroll {
+                overflow-x: auto;
+            }
+            .control-table {
+                min-width: 46rem;
+            }
+        }
+        </style>
+        """
+        '<div class="control-table-scroll">'
+        '<div class="control-table" '
+        f'style="--control-table-columns:{html.escape(columns)};">'
+        f'<div class="control-table-header">{header_html}</div>'
+        f"{''.join(row_html)}"
+        "</div></div>"
+    )
+
 
 def clickable_card_button_styles(
     key_prefix: str,
