@@ -27,6 +27,7 @@ try:
     from dashboard_pages import player as player_page
     from dashboard_pages import tournaments as tournaments_page
     from dashboard_pages import tournament_manager as tournament_manager_page
+    from dashboard_pages.ui_components import compact_score_input_styles
     import milestones
     import narratives
     import smash_statistics as stats
@@ -1194,58 +1195,7 @@ def show_bracket_match_dialog(
             ),
         )
         st.markdown(
-            """
-            <style>
-            [class*="st-key-dialog_bracket_score_"]
-            div[data-baseweb="input"] {
-                min-height: 3.55rem;
-                overflow: hidden;
-                border: 1px solid rgba(128, 128, 128, 0.42);
-                border-radius: 0.65rem;
-                background: rgba(255, 255, 255, 0.025);
-                box-shadow:
-                    0 1px 2px rgba(0, 0, 0, 0.25),
-                    0 6px 18px rgba(0, 0, 0, 0.08);
-                transition:
-                    border-color 0.15s ease,
-                    box-shadow 0.15s ease;
-            }
-            [class*="st-key-dialog_bracket_score_"]
-            div[data-baseweb="input"]:focus-within {
-                border-color: var(--primary-color, rgb(255, 75, 75));
-                box-shadow:
-                    0 0 0 2px rgba(96, 165, 250, 0.22),
-                    0 8px 24px rgba(59, 130, 246, 0.18);
-            }
-            [class*="st-key-dialog_bracket_score_"] input {
-                padding: 0 !important;
-                color: rgb(250, 250, 250) !important;
-                font-size: 1.55rem !important;
-                font-weight: 800 !important;
-                text-align: center !important;
-            }
-            [class*="st-key-dialog_bracket_score_"]
-            div[data-baseweb="input"] button {
-                width: 3.25rem;
-                min-width: 3.25rem;
-                border-radius: 0;
-                color: rgba(250, 250, 250, 0.68);
-                transition:
-                    background-color 0.15s ease,
-                    color 0.15s ease;
-            }
-            [class*="st-key-dialog_bracket_score_"]
-            div[data-baseweb="input"] button:hover {
-                background: rgba(59, 130, 246, 0.12);
-                color: rgb(250, 250, 250);
-            }
-            [class*="st-key-dialog_bracket_score_"] label p {
-                color: rgba(250, 250, 250, 0.68);
-                font-size: 0.82rem;
-                font-weight: 650;
-            }
-            </style>
-            """,
+            compact_score_input_styles("dialog_bracket_score_"),
             unsafe_allow_html=True,
         )
 

@@ -22,6 +22,7 @@ from dashboard_pages.tournament_control_center import (  # noqa: E402
 )
 from dashboard_pages.ui_components import (  # noqa: E402
     clickable_card_button_styles,
+    compact_score_input_styles,
     dashboard_table_html,
 )
 
@@ -171,6 +172,25 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
 
 
 class TournamentControlCenterTests(unittest.TestCase):
+    def test_compact_score_styles_preserve_shared_and_optional_states(
+        self,
+    ) -> None:
+        styles = compact_score_input_styles("example_score_")
+
+        self.assertIn('[class*="st-key-example_score_"]', styles)
+        self.assertIn('div[data-baseweb="input"]:focus-within', styles)
+        self.assertIn("font-size: 1.55rem", styles)
+        self.assertIn("button:hover", styles)
+        self.assertNotIn("button:first-of-type", styles)
+        self.assertNotIn("button:last-of-type", styles)
+
+        separated_styles = compact_score_input_styles(
+            "example_score_",
+            separate_stepper_buttons=True,
+        )
+        self.assertIn("button:first-of-type", separated_styles)
+        self.assertIn("button:last-of-type", separated_styles)
+
     def test_dashboard_table_preserves_visual_states_and_escapes_text(
         self,
     ) -> None:
