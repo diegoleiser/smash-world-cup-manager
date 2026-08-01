@@ -20,6 +20,9 @@ from dashboard_pages.forecast_format import (  # noqa: E402
 from dashboard_pages.tournament_control_center import (  # noqa: E402
     group_ready_matches,
 )
+from dashboard_pages.tournaments import (  # noqa: E402
+    _final_standings_table_data,
+)
 from dashboard_pages.ui_components import (  # noqa: E402
     clickable_card_button_styles,
     compact_score_input_styles,
@@ -309,6 +312,31 @@ class TournamentControlCenterTests(unittest.TestCase):
             [match["group_match_id"] for match in ready],
             ["pending"],
         )
+
+
+class TournamentPageTests(unittest.TestCase):
+    def test_final_standings_preserve_ties_seeds_and_missing_values(
+        self,
+    ) -> None:
+        ordinal_labels = {1: "1st", 2: "2nd", 5: "5th"}
+        rows, highlights = _final_standings_table_data(
+            [
+                {"placement": 1, "player": "Champion", "seed": 3},
+                {"placement": 2, "player": "Runner-up", "seed": 1},
+                {"placement": 5, "player": "Fifth A", "seed": 5},
+                {"placement": 5, "player": "Fifth B", "seed": None},
+                {"placement": None, "player": "Unknown", "seed": 5},
+            ],
+            ordinal_labels.__getitem__,
+        )
+
+        self.assertEqual(rows[0], ["🥇 1st", "Champion", "Seed #3", "▲ 2"])
+        self.assertEqual(rows[1], ["🥈 2nd", "Runner-up", "Seed #1", "▼ 1"])
+        self.assertEqual(rows[2][0], "T-5th")
+        self.assertEqual(rows[2][3], "= Seed")
+        self.assertEqual(rows[3], ["T-5th", "Fifth B", "Not seeded", "–"])
+        self.assertEqual(rows[4], ["–", "Unknown", "Seed #5", "–"])
+        self.assertEqual(highlights, {0: "winners"})
 
 
 if __name__ == "__main__":

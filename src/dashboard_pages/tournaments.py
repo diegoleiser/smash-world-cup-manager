@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html
 from typing import Any, Callable
 
 import altair as alt
@@ -11,11 +10,73 @@ import streamlit as st
 
 import bracket_visualization
 import narratives
+from dashboard_pages.ui_components import dashboard_table_html
 from tournament.archived_bracket import (
     archived_match_round_label,
     build_archived_bracket_matches,
     build_archived_bracket_routes,
 )
+
+
+def _final_standings_table_data(
+    participants: list[dict[str, Any]],
+    format_ordinal: Callable[[int], str],
+) -> tuple[list[list[str]], dict[int, str]]:
+    """Build display rows and highlights for archived final standings."""
+
+    placement_counts: dict[int, int] = {}
+    for participant in participants:
+        placement = participant["placement"]
+        if placement is not None:
+            placement_number = int(placement)
+            placement_counts[placement_number] = (
+                placement_counts.get(placement_number, 0) + 1
+            )
+
+    placement_icons = {1: "🥇", 2: "🥈", 3: "🥉"}
+    rows = []
+    row_highlights = {}
+    for row_index, participant in enumerate(participants):
+        placement = participant["placement"]
+        seed = participant["seed"]
+        if placement is None:
+            placement_text = "–"
+            placement_number = None
+        else:
+            placement_number = int(placement)
+            ordinal = format_ordinal(placement_number)
+            if placement_counts.get(placement_number, 0) > 1:
+                ordinal = f"T-{ordinal}"
+            icon = placement_icons.get(placement_number, "")
+            placement_text = f"{icon} {ordinal}".strip()
+            if placement_number == 1:
+                row_highlights[row_index] = "winners"
+
+        if seed is None:
+            seed_text = "Not seeded"
+            seed_performance = "–"
+        else:
+            seed_number = int(seed)
+            seed_text = f"Seed #{seed_number}"
+            if placement_number is None:
+                seed_performance = "–"
+            elif placement_number < seed_number:
+                seed_performance = f"▲ {seed_number - placement_number}"
+            elif placement_number > seed_number:
+                seed_performance = f"▼ {placement_number - seed_number}"
+            else:
+                seed_performance = "= Seed"
+
+        rows.append(
+            [
+                placement_text,
+                str(participant["player"]),
+                seed_text,
+                seed_performance,
+            ]
+        )
+
+    return rows, row_highlights
 
 
 def render_tournaments(
@@ -132,163 +193,23 @@ def render_tournaments(
 
     with tab_overview:
         st.subheader("Final Standings")
-
-        placement_counts: dict[int, int] = {}
-
-        for participant in participants:
-            placement = participant["placement"]
-
-            if placement is None:
-                continue
-
-            placement_number = int(placement)
-
-            placement_counts[placement_number] = (
-                placement_counts.get(
-                    placement_number,
-                    0,
-                )
-                + 1
-            )
-
-        placement_icons = {
-            1: "🥇",
-            2: "🥈",
-            3: "🥉",
-        }
-
-        for participant in participants:
-            placement = participant["placement"]
-            seed = participant["seed"]
-
-            if placement is None:
-                placement_text = "–"
-                placement_number = None
-            else:
-                placement_number = int(placement)
-
-                ordinal = format_ordinal(
-                    placement_number
-                )
-
-                if placement_counts.get(
-                    placement_number,
-                    0,
-                ) > 1:
-                    ordinal = f"T-{ordinal}"
-
-                icon = placement_icons.get(
-                    placement_number,
-                    "",
-                )
-
-                placement_text = (
-                    f"{icon} {ordinal}".strip()
-                )
-
-            if seed is None:
-                seed_text = "Not seeded"
-                seed_performance = "–"
-                performance_color = "rgba(255,255,255,0.62)"
-
-            else:
-                seed_number = int(seed)
-                seed_text = f"Seed #{seed_number}"
-
-                if placement_number is None:
-                    seed_performance = "–"
-                    performance_color = "rgba(255,255,255,0.62)"
-
-                elif placement_number < seed_number:
-                    improvement = (
-                        seed_number
-                        - placement_number
-                    )
-
-                    seed_performance = (
-                        f"▲ {improvement}"
-                    )
-
-                    performance_color = "#3fb950"
-
-                elif placement_number > seed_number:
-                    decline = (
-                        placement_number
-                        - seed_number
-                    )
-
-                    seed_performance = (
-                        f"▼ {decline}"
-                    )
-
-                    performance_color = "#f85149"
-
-                else:
-                    seed_performance = "= Seed"
-                    performance_color = "rgba(255,255,255,0.62)"
-
-            with st.container(border=True):
-                st.markdown(
-                    (
-                        "<div style='"
-                        "display:grid;"
-                        "grid-template-columns:1.4fr 3.5fr 1.8fr 1.5fr;"
-                        "align-items:center;"
-                        "min-height:5.2rem;"
-                        "gap:1rem;"
-                        "'>"
-
-                        "<div style='"
-                        "display:flex;"
-                        "align-items:center;"
-                        "justify-content:flex-end;"
-                        "text-align:right;"
-                        "font-size:1.55rem;"
-                        "font-weight:800;"
-                        "padding-right:0.5rem;"
-                        "'>"
-                        f"{html.escape(placement_text)}"
-                        "</div>"
-
-                        "<div style='"
-                        "display:flex;"
-                        "align-items:center;"
-                        "justify-content:flex-start;"
-                        "text-align:left;"
-                        "font-size:1.55rem;"
-                        "font-weight:800;"
-                        "padding-left:0.5rem;"
-                        "'>"
-                        f"{html.escape(str(participant['player']))}"
-                        "</div>"
-
-                        "<div style='"
-                        "display:flex;"
-                        "align-items:center;"
-                        "justify-content:center;"
-                        "text-align:center;"
-                        "font-size:1rem;"
-                        "font-weight:700;"
-                        "'>"
-                        f"{html.escape(seed_text)}"
-                        "</div>"
-
-                        "<div style='"
-                        "display:flex;"
-                        "align-items:center;"
-                        "justify-content:center;"
-                        "text-align:center;"
-                        "font-size:1rem;"
-                        "font-weight:800;"
-                        f"color:{performance_color};"
-                        "'>"
-                        f"{html.escape(seed_performance)}"
-                        "</div>"
-
-                        "</div>"
-                    ),
-                    unsafe_allow_html=True,
-                )
+        standings_rows, standings_highlights = _final_standings_table_data(
+            participants,
+            format_ordinal,
+        )
+        st.markdown(
+            dashboard_table_html(
+                ["Placement", "Player", "Initial Seed", "Seed Change"],
+                standings_rows,
+                columns=(
+                    "minmax(7rem,0.85fr) minmax(12rem,2fr) "
+                    "minmax(7rem,0.8fr) minmax(7rem,0.75fr)"
+                ),
+                row_highlights=standings_highlights,
+                emphasis_column=1,
+            ),
+            unsafe_allow_html=True,
+        )
 
         st.caption(
             "▲ finished above the initial seed · "
