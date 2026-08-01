@@ -23,6 +23,8 @@ from dashboard_pages.tournament_control_center import (  # noqa: E402
 from dashboard_pages.tournaments import (  # noqa: E402
     _all_matches_table_rows,
     _elo_change_table_rows,
+    _elo_ranking_expander_styles,
+    _elo_snapshot_table_data,
     _final_standings_table_data,
 )
 from dashboard_pages.ui_components import (  # noqa: E402
@@ -349,6 +351,45 @@ class TournamentControlCenterTests(unittest.TestCase):
 
 
 class TournamentPageTests(unittest.TestCase):
+    def test_elo_snapshot_rows_format_rank_rating_and_participation(
+        self,
+    ) -> None:
+        rows, highlights = _elo_snapshot_table_data(
+            [
+                {
+                    "rank": 1,
+                    "player": "Alpha",
+                    "elo": 1123.456,
+                    "played_in_tournament": True,
+                },
+                {
+                    "rank": 2,
+                    "player": "Beta",
+                    "elo": 1080,
+                    "played_in_tournament": False,
+                },
+            ]
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ["#1", "Alpha", "1123.5", "Played"],
+                ["#2", "Beta", "1080.0", "Did not play"],
+            ],
+        )
+        self.assertEqual(highlights, {0: "participated"})
+
+    def test_elo_ranking_expander_matches_dashboard_card_language(
+        self,
+    ) -> None:
+        styles = _elo_ranking_expander_styles()
+
+        self.assertIn("st-key-archived_elo_ranking", styles)
+        self.assertIn("margin-top: 1rem", styles)
+        self.assertIn("border-radius: 0.8rem", styles)
+        self.assertIn("details:hover", styles)
+
     def test_elo_change_rows_group_values_and_preserve_unranked_states(
         self,
     ) -> None:

@@ -277,6 +277,10 @@ def dashboard_table_html(
         .control-table-row-losers {
             background: rgba(245, 158, 11, 0.07);
         }
+        .control-table-row-participated {
+            background: rgba(59, 130, 246, 0.055);
+            box-shadow: inset 3px 0 rgba(96, 165, 250, 0.48);
+        }
         .control-table-cell {
             min-width: 0;
             overflow: hidden;

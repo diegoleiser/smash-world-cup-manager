@@ -142,6 +142,59 @@ def _elo_change_table_rows(
     return rows
 
 
+def _elo_snapshot_table_data(
+    snapshot: list[dict[str, Any]],
+) -> tuple[list[list[str]], dict[int, str]]:
+    """Build compact rows for the full post-tournament Elo ranking."""
+
+    rows = [
+        [
+            f"#{int(row['rank'])}",
+            str(row["player"]),
+            f"{float(row['elo']):.1f}",
+            "Played" if row["played_in_tournament"] else "Did not play",
+        ]
+        for row in snapshot
+    ]
+    row_highlights = {
+        row_index: "participated"
+        for row_index, row in enumerate(snapshot)
+        if row["played_in_tournament"]
+    }
+    return rows, row_highlights
+
+
+def _elo_ranking_expander_styles() -> str:
+    """Return page-scoped styles for the archived Elo ranking expander."""
+
+    return """
+    <style>
+    div[class*="st-key-archived_elo_ranking"] {
+        margin-top: 1rem;
+    }
+    div[class*="st-key-archived_elo_ranking"] details {
+        overflow: hidden;
+        border: 1px solid rgba(128, 128, 128, 0.30);
+        border-radius: 0.8rem;
+        background: rgba(255, 255, 255, 0.018);
+        transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+    div[class*="st-key-archived_elo_ranking"] details:hover {
+        border-color: rgba(128, 128, 128, 0.48);
+        background: rgba(128, 128, 128, 0.035);
+    }
+    div[class*="st-key-archived_elo_ranking"] details[open] {
+        background: rgba(255, 255, 255, 0.012);
+    }
+    div[class*="st-key-archived_elo_ranking"] summary {
+        min-height: 3.5rem;
+        padding: 0.25rem 0.35rem;
+        font-weight: 750;
+    }
+    </style>
+    """
+
+
 def render_tournaments(
     *,
     include_inactive: bool,
@@ -484,29 +537,28 @@ def render_tournaments(
 
         snapshot = detail["elo_snapshot"]
         if snapshot:
-            with st.expander("Full Elo ranking after the tournament"):
-                st.dataframe(
-                    pd.DataFrame(
-                        [
-                            {
-                                "Rank": row["rank"],
-                                "Players": row["player"],
-                                "Elo": row["elo"],
-                                "Participated": (
-                                    "Yes"
-                                    if row["played_in_tournament"]
-                                    else "No"
-                                ),
-                            }
-                            for row in snapshot
-                        ]
-                    ),
-                    hide_index=True,
-                    width="stretch",
-                    column_config={
-                        "Rank": st.column_config.NumberColumn(format="%d"),
-                        "Elo": st.column_config.NumberColumn(format="%.1f"),
-                    },
-                )
+            snapshot_rows, snapshot_highlights = _elo_snapshot_table_data(
+                snapshot
+            )
+            st.markdown(
+                _elo_ranking_expander_styles(),
+                unsafe_allow_html=True,
+            )
+            with st.container(key="archived_elo_ranking"):
+                with st.expander("Full Elo ranking after the tournament"):
+                    st.markdown(
+                        dashboard_table_html(
+                            ["Rank", "Player", "Elo", "Tournament"],
+                            snapshot_rows,
+                            columns=(
+                                "minmax(4.5rem,0.5fr) "
+                                "minmax(10rem,1.5fr) "
+                                "minmax(6rem,0.7fr) minmax(8rem,1fr)"
+                            ),
+                            row_highlights=snapshot_highlights,
+                            emphasis_column=1,
+                        ),
+                        unsafe_allow_html=True,
+                    )
         elif not changes:
             st.info("No Elo data is available for this tournament.")
