@@ -21,6 +21,7 @@ from dashboard_pages.tournament_control_center import (  # noqa: E402
     group_ready_matches,
 )
 from dashboard_pages.tournaments import (  # noqa: E402
+    _all_matches_table_rows,
     _final_standings_table_data,
 )
 from dashboard_pages.ui_components import (  # noqa: E402
@@ -315,6 +316,44 @@ class TournamentControlCenterTests(unittest.TestCase):
 
 
 class TournamentPageTests(unittest.TestCase):
+    def test_all_matches_rows_preserve_scores_rounds_and_pending_winners(
+        self,
+    ) -> None:
+        rows = _all_matches_table_rows(
+            [
+                {
+                    "stage": "Bracket",
+                    "player_1": "Alpha",
+                    "player_2": "Beta",
+                    "player_1_score": 2,
+                    "player_2_score": 1,
+                    "score_known": True,
+                    "winner": "Alpha",
+                },
+                {
+                    "stage": None,
+                    "player_1": "Gamma",
+                    "player_2": "Delta",
+                    "player_1_score": None,
+                    "player_2_score": None,
+                    "score_known": False,
+                    "winner": None,
+                },
+            ],
+            [],
+            format_round=lambda match, archived: (
+                "Grand Final" if match["stage"] else "Unknown Round"
+            ),
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ["Bracket", "Grand Final", "Alpha vs Beta", "2:1", "Alpha"],
+                ["–", "Unknown Round", "Gamma vs Delta", "–", "Pending"],
+            ],
+        )
+
     def test_final_standings_preserve_ties_seeds_and_missing_values(
         self,
     ) -> None:

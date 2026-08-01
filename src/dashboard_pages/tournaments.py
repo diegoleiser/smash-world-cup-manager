@@ -79,6 +79,32 @@ def _final_standings_table_data(
     return rows, row_highlights
 
 
+def _all_matches_table_rows(
+    matches: list[dict[str, Any]],
+    archived_bracket_matches: list[dict[str, Any]],
+    *,
+    format_round: Callable[..., str] = archived_match_round_label,
+) -> list[list[str]]:
+    """Build compact rows for the archived all-matches table."""
+
+    rows = []
+    for match in matches:
+        if match["score_known"] and match["player_1_score"] is not None:
+            score = f"{match['player_1_score']}:{match['player_2_score']}"
+        else:
+            score = "–"
+        rows.append(
+            [
+                str(match["stage"] or "–"),
+                str(format_round(match, archived_bracket_matches)),
+                f"{match['player_1']} vs {match['player_2']}",
+                score,
+                str(match["winner"] or "Pending"),
+            ]
+        )
+    return rows
+
+
 def render_tournaments(
     *,
     load_tournaments: Callable[..., list[dict[str, Any]]],
@@ -314,26 +340,23 @@ def render_tournaments(
 
     with tab_matches:
         if matches:
-            match_rows = []
-            for match in matches:
-                if match["score_known"] and match["player_1_score"] is not None:
-                    score = f"{match['player_1_score']}:{match['player_2_score']}"
-                else:
-                    score = "–"
-                match_rows.append(
-                    {
-                        "Stage": match["stage"] or "–",
-                        "Round": archived_match_round_label(
-                            match,
-                            archived_bracket_matches,
-                        ),
-                        "Player 1": match["player_1"],
-                        "Player 2": match["player_2"],
-                        "Result": score,
-                        "Winner": match["winner"] or "Pending",
-                    }
-                )
-            st.dataframe(pd.DataFrame(match_rows), hide_index=True, width="stretch")
+            match_rows = _all_matches_table_rows(
+                matches,
+                archived_bracket_matches,
+            )
+            st.markdown(
+                dashboard_table_html(
+                    ["Stage", "Round", "Set", "Result", "Winner"],
+                    match_rows,
+                    columns=(
+                        "minmax(6rem,0.7fr) minmax(8rem,1fr) "
+                        "minmax(14rem,2fr) minmax(5rem,0.6fr) "
+                        "minmax(8rem,1fr)"
+                    ),
+                    emphasis_column=2,
+                ),
+                unsafe_allow_html=True,
+            )
         else:
             st.info("No match data is stored for this tournament.")
 
