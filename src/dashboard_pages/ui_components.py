@@ -5,6 +5,51 @@ from __future__ import annotations
 import html
 
 
+def up_next_matchup_html(
+    context_label: str,
+    player_1_name: str,
+    player_2_name: str,
+    *,
+    player_1_probability: float | None = None,
+) -> str:
+    """Return the shared live-control header for the next playable set."""
+
+    probability_html = (
+        '<div style="display:grid;grid-template-columns:1fr 1fr;'
+        'gap:2rem;margin:0.45rem 0 0.1rem;opacity:0.65;'
+        'font-size:0.82rem;">'
+        '<div style="text-align:right;">'
+        f"{player_1_probability:.1%} win chance"
+        '</div><div style="text-align:left;">'
+        f"{1.0 - player_1_probability:.1%} win chance"
+        "</div></div>"
+        if player_1_probability is not None
+        else ""
+    )
+    return (
+        '<div style="text-align:center;opacity:0.68;'
+        'font-size:0.9rem;font-weight:600;'
+        'margin:0.1rem 0 0.45rem;">'
+        f"{html.escape(context_label)}"
+        "</div>"
+        '<div style="display:grid;'
+        'grid-template-columns:1fr auto 1fr;'
+        'align-items:center;gap:1rem;'
+        'padding:0.1rem 0 0.2rem;">'
+        '<div style="text-align:right;font-size:2.15rem;'
+        'font-weight:800;line-height:1.1;">'
+        f"{html.escape(player_1_name)}"
+        "</div>"
+        '<div style="opacity:0.55;font-size:0.9rem;'
+        'font-weight:700;">VS</div>'
+        '<div style="text-align:left;font-size:2.15rem;'
+        'font-weight:800;line-height:1.1;">'
+        f"{html.escape(player_2_name)}"
+        "</div></div>"
+        f"{probability_html}"
+    )
+
+
 def compact_score_input_styles(
     key_prefix: str,
     *,

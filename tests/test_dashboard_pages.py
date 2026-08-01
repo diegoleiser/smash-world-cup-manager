@@ -24,6 +24,7 @@ from dashboard_pages.ui_components import (  # noqa: E402
     clickable_card_button_styles,
     compact_score_input_styles,
     dashboard_table_html,
+    up_next_matchup_html,
 )
 
 
@@ -172,6 +173,31 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
 
 
 class TournamentControlCenterTests(unittest.TestCase):
+    def test_up_next_matchup_preserves_layout_probability_and_escaping(
+        self,
+    ) -> None:
+        markup = up_next_matchup_html(
+            "Group <A> · Round 2",
+            "A & B",
+            "<Player>",
+            player_1_probability=0.625,
+        )
+
+        self.assertIn("grid-template-columns:1fr auto 1fr", markup)
+        self.assertIn("font-size:2.15rem", markup)
+        self.assertIn("62.5% win chance", markup)
+        self.assertIn("37.5% win chance", markup)
+        self.assertIn("Group &lt;A&gt; · Round 2", markup)
+        self.assertIn("A &amp; B", markup)
+        self.assertIn("&lt;Player&gt;", markup)
+
+        markup_without_probability = up_next_matchup_html(
+            "Winners Final · W4M1",
+            "Player 1",
+            "Player 2",
+        )
+        self.assertNotIn("win chance", markup_without_probability)
+
     def test_compact_score_styles_preserve_shared_and_optional_states(
         self,
     ) -> None:

@@ -17,6 +17,7 @@ from dashboard_pages.ui_components import (
     clickable_card_button_styles,
     compact_score_input_styles,
     dashboard_table_html,
+    up_next_matchup_html,
 )
 from monte_carlo.artifacts import ArtifactError, load_artifact
 from monte_carlo.live_service import (
@@ -476,45 +477,14 @@ def _render_group_control_center(
                     )
             with st.container(border=True, height=card_height):
                 st.markdown(
-                    (
-                        '<div style="text-align:center;opacity:0.68;'
-                        'font-size:0.9rem;font-weight:600;'
-                        'margin:0.1rem 0 0.45rem;">'
-                        f"{html.escape(str(selected['group_name']))} · "
-                        f"Round {int(selected['round_number'])}"
-                        '</div>'
-                        '<div style="'
-                        'display:grid;'
-                        'grid-template-columns:1fr auto 1fr;'
-                        'align-items:center;'
-                        'gap:1rem;'
-                        'padding:0.1rem 0 0.2rem;'
-                        '">'
-                        '<div style="text-align:right;font-size:2.15rem;'
-                        'font-weight:800;line-height:1.1;">'
-                        f"{html.escape(str(selected['player_1']))}"
-                        '</div>'
-                        '<div style="opacity:0.55;font-size:0.9rem;'
-                        'font-weight:700;">VS</div>'
-                        '<div style="text-align:left;font-size:2.15rem;'
-                        'font-weight:800;line-height:1.1;">'
-                        f"{html.escape(str(selected['player_2']))}"
-                        '</div>'
-                        '</div>'
-                        + (
-                            '<div style="display:grid;'
-                            'grid-template-columns:1fr 1fr;gap:2rem;'
-                            'margin:0.45rem 0 0.1rem;opacity:0.65;'
-                            'font-size:0.82rem;">'
-                            '<div style="text-align:right;">'
-                            f"{player_1_probability:.1%} win chance"
-                            '</div>'
-                            '<div style="text-align:left;">'
-                            f"{1.0 - player_1_probability:.1%} win chance"
-                            '</div></div>'
-                            if player_1_probability is not None
-                            else ""
-                        )
+                    up_next_matchup_html(
+                        (
+                            f"{selected['group_name']} · "
+                            f"Round {int(selected['round_number'])}"
+                        ),
+                        str(selected["player_1"]),
+                        str(selected["player_2"]),
+                        player_1_probability=player_1_probability,
                     ),
                     unsafe_allow_html=True,
                 )
@@ -891,40 +861,14 @@ def _render_bracket_control_center(
                 )
             with st.container(border=True, height=card_height):
                 st.markdown(
-                    (
-                        '<div style="text-align:center;opacity:0.68;'
-                        'font-size:0.9rem;font-weight:600;'
-                        'margin:0.1rem 0 0.45rem;">'
-                        f"{html.escape(str(chosen['round_label']))} · "
-                        f"{html.escape(str(chosen['match_code']))}"
-                        '</div>'
-                        '<div style="display:grid;'
-                        'grid-template-columns:1fr auto 1fr;'
-                        'align-items:center;gap:1rem;'
-                        'padding:0.1rem 0 0.2rem;">'
-                        '<div style="text-align:right;font-size:2.15rem;'
-                        'font-weight:800;line-height:1.1;">'
-                        f"{html.escape(str(chosen['player_1_name']))}"
-                        '</div>'
-                        '<div style="opacity:0.55;font-size:0.9rem;'
-                        'font-weight:700;">VS</div>'
-                        '<div style="text-align:left;font-size:2.15rem;'
-                        'font-weight:800;line-height:1.1;">'
-                        f"{html.escape(str(chosen['player_2_name']))}"
-                        '</div></div>'
-                        + (
-                            '<div style="display:grid;'
-                            'grid-template-columns:1fr 1fr;gap:2rem;'
-                            'margin:0.45rem 0 0.1rem;opacity:0.65;'
-                            'font-size:0.82rem;">'
-                            '<div style="text-align:right;">'
-                            f"{player_1_probability:.1%} win chance"
-                            '</div><div style="text-align:left;">'
-                            f"{1.0 - player_1_probability:.1%} win chance"
-                            '</div></div>'
-                            if player_1_probability is not None
-                            else ""
-                        )
+                    up_next_matchup_html(
+                        (
+                            f"{chosen['round_label']} · "
+                            f"{chosen['match_code']}"
+                        ),
+                        str(chosen["player_1_name"]),
+                        str(chosen["player_2_name"]),
+                        player_1_probability=player_1_probability,
                     ),
                     unsafe_allow_html=True,
                 )
