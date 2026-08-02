@@ -225,13 +225,20 @@ def dashboard_table_html(
             cell_content = html.escape(value_text)
             cell_link = cell_links.get((row_index, column_index))
             if cell_link is not None:
-                if not str(cell_link).startswith("?"):
+                link_text = str(cell_link)
+                if not (
+                    link_text.startswith("?")
+                    or (
+                        link_text.startswith("/")
+                        and not link_text.startswith("//")
+                    )
+                ):
                     raise ValueError(
                         "Dashboard table links must be internal query URLs."
                     )
                 cell_content = (
                     '<a class="control-table-link" '
-                    f'href="{html.escape(str(cell_link), quote=True)}" '
+                    f'href="{html.escape(link_text, quote=True)}" '
                     'target="_self">'
                     f"{cell_content}</a>"
                 )

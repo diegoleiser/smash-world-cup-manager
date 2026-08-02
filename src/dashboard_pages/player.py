@@ -117,7 +117,6 @@ def render_player_page(
             "selected_player_name"
         ]
         st.query_params.clear()
-        st.query_params["page"] = "Players"
         st.query_params["player_id"] = (
             player_by_name[selected_player_name]
         )

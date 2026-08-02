@@ -1381,46 +1381,106 @@ def show_tournament_manager() -> None:
         show_bracket_match_dialog=show_bracket_match_dialog,
     )
 
-def clear_navigation_query_params() -> None:
-    """Clears direct-link parameters after manual sidebar navigation."""
+def _include_inactive_players() -> bool:
+    """Return the shared inactive-player navigation preference."""
 
-    st.query_params.clear()
+    return bool(st.session_state.get("include_inactive_players", False))
+
+
+def navigation_home() -> None:
+    show_home(_include_inactive_players())
+
+
+def navigation_players() -> None:
+    show_player_page(_include_inactive_players())
+
+
+def navigation_matchups() -> None:
+    show_matchups(_include_inactive_players())
+
+
+def navigation_tournaments() -> None:
+    show_tournaments(_include_inactive_players())
+
+
+def navigation_tournament_manager() -> None:
+    show_tournament_manager()
+
+
+def navigation_monte_carlo() -> None:
+    monte_carlo_page.render_monte_carlo(
+        artifact_path=MODEL_ARTIFACT_PATH,
+        load_players=load_players,
+        load_elo_ranking=load_elo_ranking,
+    )
+
 
 def main() -> None:
     require_database()
 
-    st.sidebar.title("Navigation")
-    page_options = [
-        "Home",
-        "Players",
-        "Matchups",
-        "Tournaments",
-        "Tournament Manager",
-        "Monte Carlo",
+    pages = [
+        st.Page(
+            navigation_home,
+            title="Home",
+            icon="🏠",
+            url_path="",
+            default=True,
+        ),
+        st.Page(
+            navigation_players,
+            title="Players",
+            icon="👤",
+            url_path="players",
+        ),
+        st.Page(
+            navigation_matchups,
+            title="Matchups",
+            icon="⚔️",
+            url_path="matchups",
+        ),
+        st.Page(
+            navigation_tournaments,
+            title="Tournaments",
+            icon="🏆",
+            url_path="tournaments",
+        ),
+        st.Page(
+            navigation_tournament_manager,
+            title="Tournament Manager",
+            icon="🎛️",
+            url_path="tournament-manager",
+        ),
+        st.Page(
+            navigation_monte_carlo,
+            title="Monte Carlo",
+            icon="🎲",
+            url_path="monte-carlo",
+        ),
     ]
+    page_by_legacy_name = {page.title: page for page in pages}
 
-    requested_page = st.query_params.get(
-        "page"
+    st.sidebar.title("Navigation")
+    selected_page = st.navigation(
+        pages,
+        position="sidebar",
     )
 
-    if (
-        requested_page in page_options
-        and st.session_state.get("navigation_page")
-        != requested_page
-    ):
-        st.session_state["navigation_page"] = requested_page
+    requested_legacy_page = st.query_params.get("page")
+    if requested_legacy_page in page_by_legacy_name:
+        remaining_params = {
+            key: value
+            for key, value in st.query_params.to_dict().items()
+            if key != "page"
+        }
+        st.switch_page(
+            page_by_legacy_name[requested_legacy_page],
+            query_params=remaining_params,
+        )
 
-    page = st.sidebar.radio(
-        "Section",
-        page_options,
-        key="navigation_page",
-        label_visibility="collapsed",
-        on_change=clear_navigation_query_params,
-    )
-
-    include_inactive = st.sidebar.checkbox(
+    st.sidebar.checkbox(
         "Include inactive players",
         value=False,
+        key="include_inactive_players",
     )
 
     st.sidebar.divider()
@@ -1431,22 +1491,7 @@ def main() -> None:
         st.cache_data.clear()
         st.rerun()
 
-    if page == "Home":
-        show_home(include_inactive)
-    elif page == "Players":
-        show_player_page(include_inactive)
-    elif page == "Matchups":
-        show_matchups(include_inactive)
-    elif page == "Tournaments":
-        show_tournaments(include_inactive)
-    elif page == "Tournament Manager":
-        show_tournament_manager()
-    elif page == "Monte Carlo":
-        monte_carlo_page.render_monte_carlo(
-            artifact_path=MODEL_ARTIFACT_PATH,
-            load_players=load_players,
-            load_elo_ranking=load_elo_ranking,
-        )
+    selected_page.run()
 
 
 if __name__ == "__main__":

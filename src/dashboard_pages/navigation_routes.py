@@ -8,7 +8,7 @@ from urllib.parse import quote
 def player_profile_url(player_id: str) -> str:
     """Return the internal URL for one stable player identifier."""
 
-    return f"?page=Players&player_id={quote(str(player_id), safe='')}"
+    return f"/players?player_id={quote(str(player_id), safe='')}"
 
 
 def tournament_archive_url(tournament_number: int) -> str:
@@ -17,4 +17,4 @@ def tournament_archive_url(tournament_number: int) -> str:
     number = int(tournament_number)
     if number <= 0:
         raise ValueError("Tournament numbers must be positive.")
-    return f"?page=Tournaments&tournament={number}"
+    return f"/tournaments?tournament={number}"

@@ -630,7 +630,6 @@ def render_tournaments(
 
     def update_selected_tournament_url() -> None:
         st.query_params.clear()
-        st.query_params["page"] = "Tournaments"
         st.query_params["tournament"] = str(
             st.session_state["selected_tournament_number"]
         )

@@ -112,14 +112,24 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
     def test_internal_detail_routes_use_stable_identifiers(self) -> None:
         self.assertEqual(
             player_profile_url("player/a & b"),
-            "?page=Players&player_id=player%2Fa%20%26%20b",
+            "/players?player_id=player%2Fa%20%26%20b",
         )
         self.assertEqual(
             tournament_archive_url(13),
-            "?page=Tournaments&tournament=13",
+            "/tournaments?tournament=13",
         )
         with self.assertRaises(ValueError):
             tournament_archive_url(0)
+
+    def test_dashboard_uses_official_page_navigation(self) -> None:
+        dashboard_source = (PROJECT_ROOT / "dashboard.py").read_text()
+
+        self.assertIn("st.navigation(", dashboard_source)
+        self.assertIn('url_path="players"', dashboard_source)
+        self.assertIn('url_path="tournaments"', dashboard_source)
+        self.assertIn("st.switch_page(", dashboard_source)
+        self.assertNotIn("st.sidebar.radio(", dashboard_source)
+        self.assertNotIn('key="navigation_page"', dashboard_source)
 
     def test_monte_carlo_declares_every_data_dependency(self) -> None:
         self.assert_render_parameters(
@@ -301,13 +311,13 @@ class TournamentControlCenterTests(unittest.TestCase):
             ["Player"],
             [["A & B"]],
             columns="1fr",
-            cell_links={(0, 0): "?page=Players&player_id=a%26b"},
+            cell_links={(0, 0): "/players?player_id=a%26b"},
             emphasis_column=0,
         )
 
         self.assertIn('class="control-table-link"', markup)
         self.assertIn(
-            'href="?page=Players&amp;player_id=a%26b"',
+            'href="/players?player_id=a%26b"',
             markup,
         )
         self.assertIn("A &amp; B", markup)
@@ -319,6 +329,13 @@ class TournamentControlCenterTests(unittest.TestCase):
                 [["Unsafe"]],
                 columns="1fr",
                 cell_links={(0, 0): "javascript:alert(1)"},
+            )
+        with self.assertRaises(ValueError):
+            dashboard_table_html(
+                ["Player"],
+                [["Unsafe"]],
+                columns="1fr",
+                cell_links={(0, 0): "//example.com/player"},
             )
 
     def test_clickable_card_styles_use_shared_hover_language(self) -> None:
