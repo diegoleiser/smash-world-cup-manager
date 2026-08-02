@@ -23,6 +23,8 @@ from dashboard_pages.tournament_control_center import (  # noqa: E402
 from dashboard_pages.tournaments import (  # noqa: E402
     _all_matches_table_rows,
     _archived_group_tables,
+    _archived_tournament_header_html,
+    _archived_tournament_selector_styles,
     _elo_change_table_rows,
     _elo_ranking_expander_styles,
     _elo_snapshot_table_data,
@@ -353,6 +355,53 @@ class TournamentControlCenterTests(unittest.TestCase):
 
 
 class TournamentPageTests(unittest.TestCase):
+    def test_archived_tournament_selector_matches_expander_language(
+        self,
+    ) -> None:
+        styles = _archived_tournament_selector_styles()
+
+        self.assertIn("st-key-archived_tournament_selector", styles)
+        self.assertIn("padding: 0.55rem 0.85rem 0.75rem", styles)
+        self.assertIn("border-radius: 0.8rem", styles)
+        self.assertIn("[data-baseweb=\"select\"]", styles)
+        self.assertIn("background-color: transparent", styles)
+        self.assertIn("font-size: 1.75rem", styles)
+        self.assertIn("font-weight: 800", styles)
+        self.assertIn("[role=\"combobox\"]", styles)
+        self.assertIn("[aria-haspopup=\"listbox\"]", styles)
+        self.assertIn(":hover", styles)
+        self.assertIn("!important", styles)
+        self.assertIn(":focus-within", styles)
+
+    def test_archived_tournament_header_groups_metadata_and_podium(
+        self,
+    ) -> None:
+        markup = _archived_tournament_header_html(
+            {
+                "tournament_number": 8,
+                "tournament_date": "2026-07-31",
+            },
+            [
+                {"placement": 1, "player": "A & B"},
+                {"placement": 2, "player": "Beta"},
+                {"placement": 3, "player": "<Gamma>"},
+                {"placement": 4, "player": "Delta"},
+            ],
+            14,
+        )
+
+        self.assertIn("WC 08", markup)
+        self.assertIn("2026-07-31", markup)
+        self.assertIn("4 Participants", markup)
+        self.assertIn("14 Matches", markup)
+        self.assertIn("Champion", markup)
+        self.assertIn("archive-tournament-desktop-meta", markup)
+        self.assertIn("display: none", markup)
+        self.assertIn("A &amp; B", markup)
+        self.assertIn("&lt;Gamma&gt;", markup)
+        self.assertNotIn("<Gamma>", markup)
+        self.assertIn("@media (max-width: 700px)", markup)
+
     def test_phase_match_rows_omit_redundant_stage(self) -> None:
         rows = _phase_match_table_rows(
             [

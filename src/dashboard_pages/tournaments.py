@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from typing import Any, Callable
 
 import altair as alt
@@ -17,6 +18,242 @@ from tournament.archived_bracket import (
     build_archived_bracket_routes,
 )
 from tournament.group_stage_standings import calculate_group_standings
+
+
+def _archived_tournament_selector_styles() -> str:
+    """Return page-scoped styles for the archived tournament selector."""
+
+    return """
+    <style>
+    div[class*="st-key-archived_tournament_selector"] {
+        margin-bottom: 0.85rem;
+        padding: 0.55rem 0.85rem 0.75rem;
+        border: 1px solid rgba(128, 128, 128, 0.30);
+        border-radius: 0.8rem;
+        background: rgba(255, 255, 255, 0.018);
+        transition:
+            border-color 0.15s ease,
+            background-color 0.15s ease,
+            box-shadow 0.15s ease;
+    }
+    div[class*="st-key-archived_tournament_selector"]:hover {
+        border-color: rgba(128, 128, 128, 0.48);
+        background: rgba(128, 128, 128, 0.035);
+    }
+    div[class*="st-key-archived_tournament_selector"]:focus-within {
+        border-color: var(--primary-color, rgb(255, 75, 75));
+        box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.18);
+    }
+    div[class*="st-key-archived_tournament_selector"] label p {
+        color: rgba(250, 250, 250, 0.72);
+        font-size: 0.82rem;
+        font-weight: 750;
+    }
+    div[class*="st-key-archived_tournament_selector"]
+    [data-baseweb="select"] > div {
+        min-height: 3.65rem !important;
+        border: none !important;
+        border-radius: 0.55rem !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+    }
+    div[class*="st-key-archived_tournament_selector"]
+    [role="combobox"],
+    div[class*="st-key-archived_tournament_selector"]
+    [role="combobox"] *,
+    div[class*="st-key-archived_tournament_selector"]
+    [aria-haspopup="listbox"],
+    div[class*="st-key-archived_tournament_selector"]
+    [aria-haspopup="listbox"] *,
+    div[class*="st-key-archived_tournament_selector"]
+    [data-baseweb="select"] * {
+        font-size: 1.75rem !important;
+        font-weight: 800 !important;
+        line-height: 1.2 !important;
+    }
+    div[class*="st-key-archived_tournament_selector"] label p {
+        font-size: 0.82rem !important;
+        font-weight: 750 !important;
+    }
+    </style>
+    """
+
+
+def _archived_tournament_header_html(
+    tournament: dict[str, Any],
+    participants: list[dict[str, Any]],
+    match_count: int,
+) -> str:
+    """Return a compact archive header with metadata and podium."""
+
+    podium_names: dict[int, list[str]] = {1: [], 2: [], 3: []}
+    for participant in participants:
+        placement = participant.get("placement")
+        if placement in podium_names:
+            podium_names[int(placement)].append(str(participant["player"]))
+
+    podium_items = []
+    for placement, icon, label in (
+        (1, "🥇", "Champion"),
+        (2, "🥈", "Runner-up"),
+        (3, "🥉", "Third Place"),
+    ):
+        names = " · ".join(podium_names[placement]) or "–"
+        podium_items.append(
+            '<div class="archive-podium-item '
+            f'archive-podium-{placement}">'
+            f'<div class="archive-podium-label">{icon} {label}</div>'
+            f'<div class="archive-podium-player">{html.escape(names)}</div>'
+            "</div>"
+        )
+
+    tournament_number = int(tournament["tournament_number"])
+    tournament_date = html.escape(str(tournament.get("tournament_date") or "–"))
+    return f"""
+    <style>
+    .archive-tournament-card {{
+        overflow: hidden;
+        margin: 0.35rem 0 1rem;
+        border: 1px solid rgba(128, 128, 128, 0.30);
+        border-radius: 0.9rem;
+        background: rgba(255, 255, 255, 0.018);
+    }}
+    .archive-tournament-main {{
+        display: none;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1.5rem;
+        padding: 1.1rem 1.2rem 1rem;
+    }}
+    .archive-tournament-eyebrow {{
+        margin-bottom: 0.22rem;
+        color: rgba(250, 250, 250, 0.52);
+        font-size: 0.72rem;
+        font-weight: 750;
+        letter-spacing: 0.055em;
+        text-transform: uppercase;
+    }}
+    .archive-tournament-title {{
+        color: rgb(250, 250, 250);
+        font-size: 1.85rem;
+        font-weight: 850;
+        line-height: 1.05;
+    }}
+    .archive-tournament-meta {{
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.45rem;
+    }}
+    .archive-tournament-meta span {{
+        padding: 0.35rem 0.62rem;
+        border: 1px solid rgba(128, 128, 128, 0.24);
+        border-radius: 999px;
+        background: rgba(128, 128, 128, 0.065);
+        color: rgba(250, 250, 250, 0.72);
+        font-size: 0.8rem;
+        font-weight: 650;
+        white-space: nowrap;
+    }}
+    .archive-podium {{
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr));
+        background: rgba(128, 128, 128, 0.035);
+    }}
+    .archive-podium-item {{
+        display: flex;
+        min-height: 6.4rem;
+        flex-direction: column;
+        justify-content: center;
+        min-width: 0;
+        padding: 1rem 1.2rem 1.1rem;
+        border-right: 1px solid rgba(128, 128, 128, 0.18);
+    }}
+    .archive-podium-item:last-child {{ border-right: none; }}
+    .archive-podium-1 {{
+        background: rgba(234, 179, 8, 0.065);
+        box-shadow: inset 3px 0 rgba(250, 204, 21, 0.48);
+    }}
+    .archive-podium-label {{
+        margin-bottom: 0.2rem;
+        color: rgba(250, 250, 250, 0.52);
+        font-size: 0.7rem;
+        font-weight: 750;
+        letter-spacing: 0.035em;
+        text-transform: uppercase;
+    }}
+    .archive-podium-player {{
+        overflow: hidden;
+        color: rgb(250, 250, 250);
+        font-size: 1.25rem;
+        font-weight: 800;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }}
+    .archive-podium-1 .archive-podium-player {{
+        font-size: 1.55rem;
+    }}
+    .archive-tournament-desktop-meta {{
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.65rem;
+        min-height: 3.15rem;
+        border-top: 1px solid rgba(128, 128, 128, 0.20);
+        color: rgba(250, 250, 250, 0.52);
+        font-size: 0.88rem;
+        font-weight: 700;
+    }}
+    .archive-tournament-desktop-meta span + span::before {{
+        margin-right: 0.65rem;
+        color: rgba(250, 250, 250, 0.24);
+        content: "•";
+    }}
+    @media (max-width: 700px) {{
+        .archive-tournament-main {{
+            display: flex;
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 0.8rem;
+        }}
+        .archive-tournament-meta {{ justify-content: flex-start; }}
+        .archive-podium {{
+            grid-template-columns: 1fr;
+            border-top: 1px solid rgba(128, 128, 128, 0.22);
+        }}
+        .archive-podium-item {{
+            min-height: 0;
+            padding: 0.8rem 1rem 0.9rem;
+            border-right: none;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.18);
+        }}
+        .archive-podium-1 {{ box-shadow: none; }}
+        .archive-podium-player {{ font-size: 1.2rem; }}
+        .archive-podium-1 .archive-podium-player {{ font-size: 1.25rem; }}
+        .archive-podium-item:last-child {{ border-bottom: none; }}
+        .archive-tournament-desktop-meta {{ display: none; }}
+    }}
+    </style>
+    <div class="archive-tournament-card">
+      <div class="archive-tournament-main">
+        <div>
+          <div class="archive-tournament-eyebrow">Archived Tournament</div>
+          <div class="archive-tournament-title">WC {tournament_number:02d}</div>
+        </div>
+        <div class="archive-tournament-meta">
+          <span>{tournament_date}</span>
+          <span>{len(participants)} Participants</span>
+          <span>{match_count} Matches</span>
+        </div>
+      </div>
+      <div class="archive-podium">{''.join(podium_items)}</div>
+      <div class="archive-tournament-desktop-meta">
+        <span>{tournament_date}</span>
+        <span>{len(participants)} Participants</span>
+        <span>{match_count} Matches</span>
+      </div>
+    </div>
+    """
 
 
 def _final_standings_table_data(
@@ -370,11 +607,16 @@ def render_tournaments(
         return
 
     tournament_numbers = [int(row["WC"].split()[1]) for row in tournaments]
-    selected_number = st.selectbox(
-        "Select tournament",
-        tournament_numbers,
-        format_func=lambda number: f"WC {number:02d}",
+    st.markdown(
+        _archived_tournament_selector_styles(),
+        unsafe_allow_html=True,
     )
+    with st.container(key="archived_tournament_selector"):
+        selected_number = st.selectbox(
+            "Select tournament",
+            tournament_numbers,
+            format_func=lambda number: f"WC {number:02d}",
+        )
     detail = load_tournament_detail(int(selected_number))
     tournament = detail["tournament"]
     participants = detail["participants"]
@@ -443,27 +685,14 @@ def render_tournaments(
         milestones=tournament_milestones,
     )
 
-    st.header(f"WC {tournament['tournament_number']:02d}")
-    summary_cols = st.columns(3)
-    summary_cols[0].metric(
-        "Date",
-        tournament["tournament_date"] or "–",
+    st.markdown(
+        _archived_tournament_header_html(
+            tournament,
+            participants,
+            len(matches),
+        ),
+        unsafe_allow_html=True,
     )
-    summary_cols[1].metric(
-        "Participants",
-        len(participants),
-    )
-    summary_cols[2].metric(
-        "Matches",
-        len(matches),
-    )
-
-    podium = {row["placement"]: row["player"] for row in participants if row["placement"] in (1, 2, 3)}
-    if podium:
-        podium_cols = st.columns(3)
-        podium_cols[0].metric("🥇 1st Place", podium.get(1, "–"))
-        podium_cols[1].metric("🥈 2nd Place", podium.get(2, "–"))
-        podium_cols[2].metric("🥉 3rd Place", podium.get(3, "–"))
 
     st.info(tournament_recap)
 
