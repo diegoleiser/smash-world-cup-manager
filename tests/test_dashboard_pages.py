@@ -440,10 +440,10 @@ class TournamentPageTests(unittest.TestCase):
                 "tournament_date": "2026-07-31",
             },
             [
-                {"placement": 1, "player": "A & B"},
-                {"placement": 2, "player": "Beta"},
-                {"placement": 3, "player": "<Gamma>"},
-                {"placement": 4, "player": "Delta"},
+                {"placement": 1, "player": "A & B", "player_id": "a"},
+                {"placement": 2, "player": "Beta", "player_id": "b"},
+                {"placement": 3, "player": "<Gamma>", "player_id": "c"},
+                {"placement": 4, "player": "Delta", "player_id": "d"},
             ],
             14,
         )
@@ -456,6 +456,8 @@ class TournamentPageTests(unittest.TestCase):
         self.assertIn("archive-tournament-desktop-meta", markup)
         self.assertIn("display: none", markup)
         self.assertIn("A &amp; B", markup)
+        self.assertIn('href="/players?player_id=a"', markup)
+        self.assertIn("archive-podium-link", markup)
         self.assertIn("&lt;Gamma&gt;", markup)
         self.assertNotIn("<Gamma>", markup)
         self.assertIn("@media (max-width: 700px)", markup)
@@ -554,6 +556,13 @@ class TournamentPageTests(unittest.TestCase):
             ],
         )
         self.assertEqual(tables[0]["highlights"], {0: "winners"})
+        self.assertEqual(
+            tables[0]["links"],
+            {
+                (0, 1): "/players?player_id=a",
+                (1, 1): "/players?player_id=b",
+            },
+        )
         self.assertEqual(tables[1]["rows"][0][1], "Delta")
         self.assertEqual(tables[1]["highlights"], {1: "winners"})
 

@@ -11,6 +11,7 @@ import streamlit as st
 
 import bracket_visualization
 import narratives
+from dashboard_pages.navigation_routes import player_profile_url
 from dashboard_pages.ui_components import dashboard_table_html
 from tournament.archived_bracket import (
     archived_match_round_label,
@@ -86,11 +87,21 @@ def _archived_tournament_header_html(
 ) -> str:
     """Return a compact archive header with metadata and podium."""
 
-    podium_names: dict[int, list[str]] = {1: [], 2: [], 3: []}
+    podium_players: dict[int, list[tuple[str, str | None]]] = {
+        1: [],
+        2: [],
+        3: [],
+    }
     for participant in participants:
         placement = participant.get("placement")
-        if placement in podium_names:
-            podium_names[int(placement)].append(str(participant["player"]))
+        if placement in podium_players:
+            player_id = participant.get("player_id")
+            podium_players[int(placement)].append(
+                (
+                    str(participant["player"]),
+                    str(player_id) if player_id is not None else None,
+                )
+            )
 
     podium_items = []
     for placement, icon, label in (
@@ -98,12 +109,23 @@ def _archived_tournament_header_html(
         (2, "🥈", "Runner-up"),
         (3, "🥉", "Third Place"),
     ):
-        names = " · ".join(podium_names[placement]) or "–"
+        linked_names = []
+        for player_name, player_id in podium_players[placement]:
+            escaped_name = html.escape(player_name)
+            if player_id is None:
+                linked_names.append(escaped_name)
+            else:
+                linked_names.append(
+                    '<a class="archive-podium-link" '
+                    f'href="{html.escape(player_profile_url(player_id), quote=True)}" '
+                    f'target="_self">{escaped_name}</a>'
+                )
+        names = " · ".join(linked_names) or "–"
         podium_items.append(
             '<div class="archive-podium-item '
             f'archive-podium-{placement}">'
             f'<div class="archive-podium-label">{icon} {label}</div>'
-            f'<div class="archive-podium-player">{html.escape(names)}</div>'
+            f'<div class="archive-podium-player">{names}</div>'
             "</div>"
         )
 
@@ -189,6 +211,18 @@ def _archived_tournament_header_html(
         font-weight: 800;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }}
+    .archive-podium-link,
+    .archive-podium-link:link,
+    .archive-podium-link:visited {{
+        color: inherit !important;
+        text-decoration: none !important;
+    }}
+    .archive-podium-link:hover {{ opacity: 0.72; }}
+    .archive-podium-link:focus-visible {{
+        border-radius: 0.25rem;
+        outline: 2px solid var(--primary-color, rgb(255, 75, 75));
+        outline-offset: 3px;
     }}
     .archive-podium-1 .archive-podium-player {{
         font-size: 1.55rem;
@@ -577,6 +611,12 @@ def _archived_group_tables(
                     else f"Group {chr(65 + group_index)}"
                 ),
                 "rows": rows,
+                "links": {
+                    (row_index, 1): player_profile_url(
+                        str(standing["player_id"])
+                    )
+                    for row_index, standing in enumerate(standings)
+                },
                 "highlights": {
                     row_index: "winners"
                     for row_index, standing in enumerate(standings)
@@ -759,6 +799,7 @@ def render_tournaments(
                             "minmax(6rem,0.7fr)"
                         ),
                         row_highlights=table["highlights"],
+                        cell_links=table["links"],
                         emphasis_column=1,
                     ),
                     unsafe_allow_html=True,
@@ -777,6 +818,13 @@ def render_tournaments(
                         "minmax(8rem,1fr) minmax(14rem,2fr) "
                         "minmax(5rem,0.6fr) minmax(8rem,1fr)"
                     ),
+                    cell_links={
+                        (row_index, 3): player_profile_url(
+                            str(match["winner_id"])
+                        )
+                        for row_index, match in enumerate(group_phase_matches)
+                        if match.get("winner_id") is not None
+                    },
                     emphasis_column=1,
                 ),
                 unsafe_allow_html=True,
@@ -797,6 +845,12 @@ def render_tournaments(
                     "minmax(7rem,0.8fr) minmax(7rem,0.75fr)"
                 ),
                 row_highlights=standings_highlights,
+                cell_links={
+                    (row_index, 1): player_profile_url(
+                        str(participant["player_id"])
+                    )
+                    for row_index, participant in enumerate(participants)
+                },
                 emphasis_column=1,
             ),
             unsafe_allow_html=True,
@@ -917,6 +971,13 @@ def render_tournaments(
                         "minmax(8rem,1fr) minmax(14rem,2fr) "
                         "minmax(5rem,0.6fr) minmax(8rem,1fr)"
                     ),
+                    cell_links={
+                        (row_index, 3): player_profile_url(
+                            str(match["winner_id"])
+                        )
+                        for row_index, match in enumerate(bracket_phase_matches)
+                        if match.get("winner_id") is not None
+                    },
                     emphasis_column=1,
                 ),
                 unsafe_allow_html=True,
@@ -1002,6 +1063,12 @@ def render_tournaments(
                         "minmax(10rem,1.4fr) minmax(11rem,1.2fr) "
                         "minmax(6rem,0.7fr) minmax(10rem,1fr)"
                     ),
+                    cell_links={
+                        (row_index, 0): player_profile_url(
+                            str(change["player_id"])
+                        )
+                        for row_index, change in enumerate(changes)
+                    },
                     emphasis_column=0,
                 ),
                 unsafe_allow_html=True,
@@ -1028,6 +1095,12 @@ def render_tournaments(
                                 "minmax(6rem,0.7fr) minmax(8rem,1fr)"
                             ),
                             row_highlights=snapshot_highlights,
+                            cell_links={
+                                (row_index, 1): player_profile_url(
+                                    str(row["player_id"])
+                                )
+                                for row_index, row in enumerate(snapshot)
+                            },
                             emphasis_column=1,
                         ),
                         unsafe_allow_html=True,
