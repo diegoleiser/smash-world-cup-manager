@@ -565,6 +565,40 @@ def render_home(
         "@media (max-width:800px) {"
         ".preview-card-grid {"
         "grid-template-columns:1fr;"
+        "gap:0;"
+        "border:1px solid rgba(128,128,128,0.30);"
+        "border-radius:0.8rem;"
+        "overflow:hidden;"
+        "}"
+        ".preview-card {"
+        "display:grid;"
+        "grid-template-columns:minmax(0, 1fr) auto;"
+        "align-items:end;"
+        "gap:0.35rem 1rem;"
+        "min-height:0;"
+        "padding:1rem;"
+        "border:none;"
+        "border-bottom:1px solid rgba(128,128,128,0.22);"
+        "border-radius:0;"
+        "}"
+        ".preview-card:last-child {"
+        "border-bottom:none;"
+        "}"
+        ".preview-card-label {"
+        "grid-column:1 / -1;"
+        "font-size:0.72rem;"
+        "}"
+        ".preview-card-value {"
+        "grid-column:1 / 2;"
+        "font-size:1.22rem;"
+        "margin-top:0.2rem;"
+        "}"
+        ".preview-card-detail {"
+        "grid-column:2 / 3;"
+        "font-size:0.84rem;"
+        "margin-top:0;"
+        "padding-top:0;"
+        "text-align:right;"
         "}"
         "}"
         "</style>"
@@ -756,6 +790,10 @@ def render_home(
             row_highlights=ranking_highlights,
             cell_links=ranking_links,
             emphasis_column=1,
+            mobile_cards=True,
+            mobile_visible_rows=5,
+            mobile_summary="Show full ranking",
+            mobile_card_variant="ranking",
         ),
         unsafe_allow_html=True,
     )
@@ -1140,10 +1178,79 @@ def render_home(
             height=560,
         )
 
-        st.altair_chart(
-            elo_history_chart,
-            width="stretch",
+        mobile_solid_segments = solid_segments.encode(
+            color=alt.Color(
+                "Players:N",
+                title=None,
+                legend=alt.Legend(
+                    orient="bottom",
+                    direction="horizontal",
+                    columns=3,
+                    symbolType="circle",
+                    symbolSize=85,
+                ),
+            )
         )
+        mobile_elo_history_chart = (
+            mobile_solid_segments
+            + dashed_segments
+            + hover_targets
+            + played_points
+            + missed_points
+        ).properties(
+            height=480,
+            padding={
+                "left": 24,
+                "right": 6,
+                "top": 8,
+                "bottom": 8,
+            },
+        ).configure_axisX(
+            labelAngle=-45,
+            labelOverlap="greedy",
+            labelLimit=55,
+            labelFontSize=10,
+            titleFontSize=12,
+        ).configure_axisY(
+            labelFontSize=12,
+            titleFontSize=13,
+            titlePadding=10,
+        ).configure_legend(
+            labelFontSize=10,
+        )
+
+        st.markdown(
+            """
+            <style>
+            [class*="st-key-home_elo_history_mobile"] {
+                display: none;
+            }
+            @media (max-width: 700px) {
+                [class*="st-key-home_elo_history_desktop"] {
+                    display: none;
+                }
+                [class*="st-key-home_elo_history_mobile"] {
+                    display: block;
+                }
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.container(
+            key="home_elo_history_desktop"
+        ):
+            st.altair_chart(
+                elo_history_chart,
+                width="stretch",
+            )
+        with st.container(
+            key="home_elo_history_mobile"
+        ):
+            st.altair_chart(
+                mobile_elo_history_chart,
+                width="stretch",
+            )
 
         st.caption(
             "Dashed segments and hollow points indicate tournaments "
@@ -1223,6 +1330,10 @@ def render_home(
                 ),
                 cell_links=tournament_links,
                 emphasis_column=0,
+                mobile_cards=True,
+                mobile_visible_rows=5,
+                mobile_summary="Show all tournaments",
+                mobile_card_variant="tournament",
             ),
             unsafe_allow_html=True,
         )
@@ -1291,6 +1402,10 @@ def render_home(
                 row_highlights=title_highlights,
                 cell_links=title_links,
                 emphasis_column=1,
+                mobile_cards=True,
+                mobile_visible_rows=5,
+                mobile_summary="Show all title leaders",
+                mobile_card_variant="titles",
             ),
             unsafe_allow_html=True,
         )

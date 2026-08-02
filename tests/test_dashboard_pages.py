@@ -352,6 +352,64 @@ class TournamentControlCenterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             internal_dashboard_link("Unsafe", "https://example.com")
 
+    def test_dashboard_table_supports_opt_in_mobile_cards(self) -> None:
+        markup = dashboard_table_html(
+            ["Player", "Elo"],
+            [["Tamira", "1234.5"], ["Gianni", "1200.0"]],
+            columns="2fr 1fr",
+            emphasis_column=0,
+            mobile_cards=True,
+            mobile_visible_rows=1,
+            mobile_summary="Show full ranking",
+            mobile_card_variant="ranking",
+        )
+
+        self.assertIn("control-table-mobile-cards", markup)
+        self.assertIn('data-label="Player"', markup)
+        self.assertIn('data-label="Elo"', markup)
+        self.assertIn("grid-column: 1 / -1", markup)
+        self.assertIn("control-table-mobile-collapsed", markup)
+        self.assertIn("Show full ranking", markup)
+        self.assertIn("Show less", markup)
+        self.assertIn("control-table-mobile-more", markup)
+        self.assertIn("control-table-mobile-ranking", markup)
+        self.assertIn("order: 2", markup)
+
+        with self.assertRaises(ValueError):
+            dashboard_table_html(
+                ["Player"],
+                [["Tamira"]],
+                columns="1fr",
+                mobile_cards=True,
+                mobile_visible_rows=0,
+            )
+
+        with self.assertRaises(ValueError):
+            dashboard_table_html(
+                ["Player"],
+                [["Tamira"]],
+                columns="1fr",
+                mobile_cards=True,
+                mobile_card_variant="unknown",
+            )
+
+        tournament_markup = dashboard_table_html(
+            ["Tournament", "Date", "Champion", "Players"],
+            [["WC 13", "28 Feb 2026", "Tamira", "7"]],
+            columns="repeat(4, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="tournament",
+        )
+        titles_markup = dashboard_table_html(
+            ["Rank", "Player", "Titles"],
+            [["#1", "Gianni", "5 Titles"]],
+            columns="repeat(3, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="titles",
+        )
+        self.assertIn("control-table-mobile-tournament", tournament_markup)
+        self.assertIn("control-table-mobile-titles", titles_markup)
+
     def test_clickable_card_styles_use_shared_hover_language(self) -> None:
         styles = clickable_card_button_styles("example_card_")
 
