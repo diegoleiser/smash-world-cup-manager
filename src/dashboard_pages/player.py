@@ -381,6 +381,10 @@ def render_player_page(
         "padding:0.4rem 0.5rem;"
         "}"
 
+        ".player-profile-current-label {"
+        "font-size:0.78rem;"
+        "}"
+
         "}"
 
         "</style>"
@@ -541,17 +545,17 @@ def render_player_page(
 
         "@media (max-width:520px) {"
 
-        ".career-overview-strip {"
-        "grid-template-columns:1fr;"
-        "}"
-
         ".career-overview-item {"
-        "border-left:none;"
-        "border-top:1px solid rgba(128,128,128,0.20);"
+        "min-height:6.5rem;"
+        "padding:0.85rem 0.7rem;"
         "}"
 
-        ".career-overview-item:first-child {"
-        "border-top:none;"
+        ".career-overview-label {"
+        "font-size:0.78rem;"
+        "}"
+
+        ".career-overview-detail {"
+        "font-size:0.8rem;"
         "}"
 
         "}"
@@ -930,6 +934,15 @@ def render_player_page(
         "border-top:1px solid rgba(128,128,128,0.22);"
         "}"
 
+        ".player-insight-label {"
+        "font-size:0.8rem;"
+        "}"
+
+        ".player-insight-detail,"
+        ".player-streak-description {"
+        "font-size:0.86rem;"
+        "}"
+
         "}"
 
         "</style>"
@@ -1009,11 +1022,34 @@ def render_player_page(
         unsafe_allow_html=True,
     )
 
-
-
-
-
-
+    st.markdown(
+        """
+        <style>
+        @media (max-width: 700px) {
+            div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
+                gap: 0.9rem;
+                overflow-x: auto;
+                scrollbar-width: none;
+            }
+            div[data-testid="stTabs"]
+            div[data-baseweb="tab-list"]::-webkit-scrollbar {
+                display: none;
+            }
+            div[data-testid="stTabs"] button[data-baseweb="tab"] {
+                flex: 0 0 auto;
+                padding-right: 0.1rem;
+                padding-left: 0.1rem;
+            }
+            div[data-testid="stTabs"] button[data-baseweb="tab"] p {
+                font-size: 0.84rem;
+                font-weight: 700;
+                white-space: nowrap;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     tab_elo, tab_rank, tab_history, tab_opponents = st.tabs(
         ["Elo History", "Ranking History", "Tournament History", "Opponent Records"]
