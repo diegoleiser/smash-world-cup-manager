@@ -194,10 +194,12 @@ def dashboard_table_html(
     columns: str,
     row_highlights: dict[int, str] | None = None,
     emphasis_column: int | None = None,
+    cell_links: dict[tuple[int, int], str] | None = None,
 ) -> str:
     """Return markup for a compact table in the dashboard visual language."""
 
     row_highlights = row_highlights or {}
+    cell_links = cell_links or {}
     header_html = "".join(
         f"<div>{html.escape(header)}</div>" for header in headers
     )
@@ -220,10 +222,22 @@ def dashboard_table_html(
                     else ""
                 )
             )
+            cell_content = html.escape(value_text)
+            cell_link = cell_links.get((row_index, column_index))
+            if cell_link is not None:
+                if not str(cell_link).startswith("?"):
+                    raise ValueError(
+                        "Dashboard table links must be internal query URLs."
+                    )
+                cell_content = (
+                    '<a class="control-table-link" '
+                    f'href="{html.escape(str(cell_link), quote=True)}" '
+                    'target="_self">'
+                    f"{cell_content}</a>"
+                )
             cells.append(
                 f'<div class="control-table-cell{emphasis_class}'
-                f'{movement_class}">'
-                f"{html.escape(value_text)}</div>"
+                f'{movement_class}">{cell_content}</div>'
             )
         highlight = row_highlights.get(row_index)
         highlight_class = (
@@ -294,6 +308,26 @@ def dashboard_table_html(
             color: rgb(250, 250, 250);
             font-size: 1.02rem;
             font-weight: 800;
+        }
+        .control-table-link,
+        .control-table-link:link,
+        .control-table-link:visited {
+            color: inherit !important;
+            font-weight: inherit;
+            text-decoration: none !important;
+        }
+        .control-table-link {
+            display: inline-block;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+        }
+        .control-table-link:hover {
+            opacity: 0.72;
+            transform: translateX(3px);
+        }
+        .control-table-link:focus-visible {
+            border-radius: 0.25rem;
+            outline: 2px solid var(--primary-color, rgb(255, 75, 75));
+            outline-offset: 3px;
         }
         .control-table-positive {
             color: rgb(74, 222, 128);

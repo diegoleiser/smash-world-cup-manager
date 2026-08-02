@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import html
 from typing import Any, Callable
-from urllib.parse import quote
 
 import altair as alt
 import pandas as pd
 import streamlit as st
 
 import narratives
+from dashboard_pages.navigation_routes import (
+    player_profile_url,
+    tournament_archive_url,
+)
 from dashboard_pages.timeline_order import (
     chronological_tournament_labels,
 )
+from dashboard_pages.ui_components import dashboard_table_html
 
 
 def render_home(
@@ -716,200 +720,45 @@ def render_home(
 
     leader_elo = float(ranking[0]["elo"])
 
-    ranking_rows_html: list[str] = []
-
-    rank_icons = {
-        1: "🥇",
-        2: "🥈",
-        3: "🥉",
-    }
-
-    for entry in ranking:
+    rank_icons = {1: "🥇", 2: "🥈", 3: "🥉"}
+    ranking_rows = []
+    ranking_links = {}
+    ranking_highlights = {}
+    for row_index, entry in enumerate(ranking):
         rank = int(entry["rank"])
-        player_name = str(entry["player"])
-        player_profile_url = (
-            "?page=Players&player="
-            f"{quote(player_name)}"
-        )
         elo = float(entry["elo"])
-        rated_sets = int(entry["rated_matches"])
-        active = bool(entry["active"])
-
-        rank_display = (
-            f"{rank_icons.get(rank, '')} #{rank}".strip()
-        )
-
         elo_gap = leader_elo - elo
-
+        ranking_rows.append(
+            [
+                f"{rank_icons.get(rank, '')} #{rank}".strip(),
+                str(entry["player"]),
+                f"{elo:.1f}",
+                "Leader" if rank == 1 else f"−{elo_gap:.1f}",
+                str(int(entry["rated_matches"])),
+                "Active" if entry["active"] else "Inactive",
+            ]
+        )
+        ranking_links[(row_index, 1)] = player_profile_url(
+            str(entry["player_id"])
+        )
         if rank == 1:
-            gap_text = "Leader"
-            gap_color = "#3fb950"
-        else:
-            gap_text = f"−{elo_gap:.1f}"
-            gap_color = "rgba(255,255,255,0.58)"
-
-        status_text = (
-            "Active"
-            if active
-            else "Inactive"
-        )
-
-        status_color = (
-            "#3fb950"
-            if active
-            else "rgba(255,255,255,0.45)"
-        )
-
-        top_rank_style = (
-            "background:rgba(34,197,94,0.07);"
-            if rank == 1
-            else ""
-        )
-
-        ranking_rows_html.append(
-            (
-                "<div class='elo-ranking-row' "
-                f"style='{top_rank_style}'>"
-
-                "<div class='elo-ranking-rank'>"
-                f"{html.escape(rank_display)}"
-                "</div>"
-
-                "<div class='elo-ranking-player'>"
-                "<a class='elo-ranking-player-link' "
-                f"href='{html.escape(player_profile_url)}' "
-                "target='_self'>"
-                f"{html.escape(player_name)}"
-                "</a>"
-                "</div>"
-
-                "<div class='elo-ranking-value'>"
-                f"{elo:.1f} Elo"
-                "</div>"
-
-                "<div class='elo-ranking-gap' "
-                f"style='color:{gap_color};'>"
-                f"{html.escape(gap_text)}"
-                "</div>"
-
-                "<div class='elo-ranking-sets'>"
-                f"{rated_sets} sets"
-                "</div>"
-
-                "<div class='elo-ranking-status' "
-                f"style='color:{status_color};'>"
-                f"{status_text}"
-                "</div>"
-
-                "</div>"
-            )
-        )
-
-    ranking_list_html = (
-        "<style>"
-        ".elo-ranking-list {"
-        "border:1px solid rgba(128,128,128,0.30);"
-        "border-radius:0.8rem;"
-        "overflow:hidden;"
-        "}"
-
-        ".elo-ranking-row {"
-        "display:grid;"
-        "grid-template-columns:5.5rem minmax(8rem,2fr) "
-        "minmax(7rem,1fr) minmax(5rem,0.8fr) "
-        "minmax(5rem,0.8fr) minmax(5rem,0.8fr);"
-        "align-items:center;"
-        "min-height:4.2rem;"
-        "padding:0.7rem 1rem;"
-        "border-bottom:1px solid rgba(128,128,128,0.20);"
-        "gap:0.75rem;"
-        "}"
-
-        ".elo-ranking-row:last-child {"
-        "border-bottom:none;"
-        "}"
-
-        ".elo-ranking-rank {"
-        "font-weight:800;"
-        "text-align:right;"
-        "}"
-
-        ".elo-ranking-player {"
-        "font-size:1.1rem;"
-        "font-weight:800;"
-        "}"
-
-        ".elo-ranking-player-link,"
-        ".elo-ranking-player-link:link,"
-        ".elo-ranking-player-link:visited,"
-        ".elo-ranking-player-link:hover,"
-        ".elo-ranking-player-link:active,"
-        ".elo-ranking-player-link:focus {"
-        "color:inherit !important;"
-        "text-decoration:none !important;"
-        "}"
-
-        ".elo-ranking-player-link {"
-        "display:inline-block;"
-        "font-weight:800;"
-        "transition:opacity 0.15s ease, transform 0.15s ease;"
-        "}"
-
-        ".elo-ranking-player-link:hover {"
-        "opacity:0.72;"
-        "transform:translateX(3px);"
-        "}"
-
-        ".elo-ranking-player-link:focus {"
-        "outline:none;"
-        "}"
-
-        ".elo-ranking-value {"
-        "font-weight:750;"
-        "text-align:right;"
-        "}"
-
-        ".elo-ranking-gap,"
-        ".elo-ranking-sets,"
-        ".elo-ranking-status {"
-        "font-size:0.88rem;"
-        "font-weight:700;"
-        "text-align:center;"
-        "}"
-
-        "@media (max-width:768px) {"
-
-        ".elo-ranking-row {"
-        "grid-template-columns:var(--mobile-table-columns);"
-        "gap:var(--mobile-table-gap);"
-        "padding:var(--mobile-table-padding);"
-        "min-height:var(--mobile-table-height);"
-        "}"
-
-        ".elo-ranking-rank {"
-        "padding-right:1.9rem;"
-        "white-space:nowrap;"
-        "}"
-
-        ".elo-ranking-gap,"
-        ".elo-ranking-sets,"
-        ".elo-ranking-status {"
-        "display:none;"
-        "}"
-
-        "}"
-        "</style>"
-
-        "<div class='elo-ranking-list'>"
-        f"{''.join(ranking_rows_html)}"
-        "</div>"
-    )
+            ranking_highlights[row_index] = "winners"
 
     st.markdown(
-        ranking_list_html,
+        dashboard_table_html(
+            ["Rank", "Player", "Elo", "Gap", "Sets", "Status"],
+            ranking_rows,
+            columns=(
+                "minmax(5.5rem,0.65fr) minmax(10rem,1.8fr) "
+                "minmax(6rem,0.8fr) minmax(5rem,0.7fr) "
+                "minmax(5rem,0.65fr) minmax(6rem,0.75fr)"
+            ),
+            row_highlights=ranking_highlights,
+            cell_links=ranking_links,
+            emphasis_column=1,
+        ),
         unsafe_allow_html=True,
     )
-
     st.markdown(
         (
             "<div style='"
@@ -1319,8 +1168,10 @@ def render_home(
                         f"World Championship "
                         f"{int(tournament['WC'].split()[1]):02d}"
                     ),
+                    "Tournament Number": int(tournament["WC"].split()[1]),
                     "Date": tournament["Date"],
                     "Champion": tournament["Winner"],
+                    "Winner ID": tournament.get("Winner ID"),
                     "Players": (
                         tournament["Participants"]
                         if tournament["Participants"] > 0
@@ -1331,221 +1182,50 @@ def render_home(
             ]
         )
 
-        tournament_rows_html: list[str] = []
-
-        for _, row in tournament_df.iterrows():
-            tournament_name = str(row["Tournament"])
-            champion = str(row["Champion"])
-
+        tournament_rows = []
+        tournament_links = {}
+        for row_index, row in tournament_df.iterrows():
             raw_date = row["Date"]
-
-            if pd.notna(raw_date):
-                formatted_date = pd.to_datetime(
-                    raw_date
-                ).strftime("%d %b %Y")
-            else:
-                formatted_date = "–"
-
-            players_value = row["Players"]
-
-            if pd.isna(players_value):
-                players_text = "–"
-            else:
-                players_text = str(
-                    int(players_value)
-                )
-
-            tournament_rows_html.append(
-                (
-                    "<div class='tournament-overview-row'>"
-
-                    "<div class='tournament-overview-name'>"
-                    f"{html.escape(tournament_name)}"
-                    "</div>"
-
-                    "<div class='tournament-overview-date'>"
-                    f"{html.escape(formatted_date)}"
-                    "</div>"
-
-                    "<div class='tournament-overview-champion'>"
-                    f"{html.escape(champion)}"
-                    "</div>"
-
-                    "<div class='tournament-overview-players'>"
-                    f"{html.escape(players_text)}"
-                    "</div>"
-
-                    "</div>"
-                )
+            formatted_date = (
+                pd.to_datetime(raw_date).strftime("%d %b %Y")
+                if pd.notna(raw_date)
+                else "–"
             )
-
-        tournament_overview_html = (
-            "<style>"
-
-            ".tournament-overview-list {"
-            "width:100%;"
-            "border:1px solid rgba(128,128,128,0.30);"
-            "border-radius:0.8rem;"
-            "overflow:hidden;"
-            "}"
-
-            ".tournament-overview-header,"
-            ".tournament-overview-row {"
-            "display:grid;"
-            "grid-template-columns:minmax(15rem,1.4fr) "
-            "minmax(10rem,0.9fr) "
-            "minmax(12rem,1.2fr) "
-            "minmax(5rem,0.45fr);"
-            "align-items:center;"
-            "gap:0.75rem;"
-            "padding:0.7rem 1rem;"
-            "}"
-
-            ".tournament-overview-header {"
-            "min-height:3.2rem;"
-            "background:rgba(128,128,128,0.08);"
-            "border-bottom:1px solid rgba(128,128,128,0.24);"
-            "font-size:0.78rem;"
-            "font-weight:750;"
-            "letter-spacing:0.04em;"
-            "opacity:0.68;"
-            "text-transform:uppercase;"
-            "}"
-
-            ".tournament-overview-row {"
-            "min-height:4.2rem;"
-            "border-bottom:1px solid rgba(128,128,128,0.20);"
-            "}"
-            "border:1px solid rgba(128,128,128,0.30);"
-            "border-radius:0.8rem;"
-            "overflow:hidden;"
-            "}"
-
-            ".tournament-overview-header,"
-            ".tournament-overview-row {"
-            "display:grid;"
-            "grid-template-columns:7rem 10rem minmax(12rem,18rem) 5rem;"
-            "align-items:center;"
-            "gap:1.25rem;"
-            "padding:0.75rem 1rem;"
-            "}"
-
-            ".tournament-overview-header {"
-            "min-height:3rem;"
-            "background:rgba(128,128,128,0.08);"
-            "border-bottom:1px solid rgba(128,128,128,0.24);"
-            "font-size:0.78rem;"
-            "font-weight:750;"
-            "letter-spacing:0.04em;"
-            "opacity:0.68;"
-            "text-transform:uppercase;"
-            "}"
-
-            ".tournament-overview-row {"
-            "min-height:3.6rem;"
-            "border-bottom:1px solid rgba(128,128,128,0.20);"
-            "}"
-
-            ".tournament-overview-row:last-child {"
-            "border-bottom:none;"
-            "}"
-
-            ".tournament-overview-name {"
-            "font-size:1.1rem;"
-            "font-weight:800;"
-            "}"
-
-            ".tournament-overview-date {"
-            "font-size:0.88rem;"
-            "font-weight:700;"
-            "opacity:0.68;"
-            "}"
-
-            ".tournament-overview-champion {"
-            "font-size:1.1rem;"
-            "font-weight:800;"
-            "}"
-
-            ".tournament-overview-players {"
-            "font-weight:750;"
-            "text-align:right;"
-            "}"
-            ".tournament-overview-header-players {"
-            "text-align:right;"
-            "}"
-
-            "@media (max-width:768px) {"
-
-            ".tournament-overview-header,"
-            ".tournament-overview-row {"
-            "grid-template-columns:var(--mobile-table-columns);"
-            "gap:var(--mobile-table-gap);"
-            "padding:var(--mobile-table-padding);"
-            "min-height:var(--mobile-table-height);"
-            "}"
-
-            ".tournament-overview-date,"
-            ".tournament-overview-header-date {"
-            "display:none;"
-            "}"
-
-            ".tournament-overview-header-name {"
-            "white-space:nowrap;"
-            "}"
-
-            ".tournament-overview-name {"
-            "font-size:0.95rem;"
-            "}"
-
-            ".tournament-overview-champion,"
-            ".tournament-overview-header-champion {"
-            "text-align:center;"
-            "}"
-
-            ".tournament-overview-champion {"
-            "font-size:0.98rem;"
-            "min-width:0;"
-            "overflow:hidden;"
-            "text-overflow:ellipsis;"
-            "white-space:nowrap;"
-            "}"
-
-            ".tournament-overview-players,"
-            ".tournament-overview-header-players {"
-            "text-align:right;"
-            "}"
-
-            "}"
-
-            "</style>"
-
-            "<div class='tournament-overview-list'>"
-
-            "<div class='tournament-overview-header'>"
-            "<div class='tournament-overview-header-name'>"
-            "Tournament"
-            "</div>"
-            "<div class='tournament-overview-header-date'>"
-            "Date"
-            "</div>"
-            "<div class='tournament-overview-header-champion'>"
-            "Champion"
-            "</div>"
-            "<div class='tournament-overview-header-players'>"
-            "Players"
-            "</div>"
-            "</div>"
-
-            f"{''.join(tournament_rows_html)}"
-
-            "</div>"
-        )
+            players_value = row["Players"]
+            players_text = (
+                str(int(players_value))
+                if pd.notna(players_value)
+                else "–"
+            )
+            tournament_rows.append(
+                [
+                    str(row["Tournament"]),
+                    formatted_date,
+                    str(row["Champion"]),
+                    players_text,
+                ]
+            )
+            tournament_links[(row_index, 0)] = tournament_archive_url(
+                int(row["Tournament Number"])
+            )
+            if pd.notna(row["Winner ID"]):
+                tournament_links[(row_index, 2)] = player_profile_url(
+                    str(row["Winner ID"])
+                )
 
         st.markdown(
-            tournament_overview_html,
+            dashboard_table_html(
+                ["Tournament", "Date", "Champion", "Players"],
+                tournament_rows,
+                columns=(
+                    "minmax(12rem,1.4fr) minmax(8rem,0.9fr) "
+                    "minmax(10rem,1.2fr) minmax(5rem,0.45fr)"
+                ),
+                cell_links=tournament_links,
+                emphasis_column=0,
+            ),
             unsafe_allow_html=True,
         )
-
         st.markdown(
             (
                 "<div style='"
@@ -1576,109 +1256,42 @@ def render_home(
             .astype(int)
         )
 
-        title_rows_html: list[str] = []
-
-        title_icons = {
-            1: "🥇",
-            2: "🥈",
-            3: "🥉",
+        title_icons = {1: "🥇", 2: "🥈", 3: "🥉"}
+        winner_id_by_name = {
+            str(row["Champion"]): str(row["Winner ID"])
+            for _, row in tournament_df.iterrows()
+            if pd.notna(row["Winner ID"])
         }
-
-        for _, row in title_counts.iterrows():
+        title_rows = []
+        title_links = {}
+        title_highlights = {}
+        for row_index, row in title_counts.iterrows():
             rank = int(row["Rank"])
             player = str(row["Player"])
             titles = int(row["Titles"])
-
-            title_label = (
-                "Title"
-                if titles == 1
-                else "Titles"
+            title_label = "Title" if titles == 1 else "Titles"
+            rank_text = f"{title_icons.get(rank, '')} #{rank}".strip()
+            title_rows.append(
+                [rank_text, player, f"{titles} {title_label}"]
             )
-
-            rank_text = (
-                f"{title_icons.get(rank, '')} #{rank}".strip()
-            )
-
-            title_rows_html.append(
-                (
-                    "<div class='title-leader-row'>"
-                    "<div class='title-leader-rank'>"
-                    f"{html.escape(rank_text)}"
-                    "</div>"
-                    "<div class='title-leader-player'>"
-                    f"{html.escape(player)}"
-                    "</div>"
-                    "<div class='title-leader-count'>"
-                    f"{titles} {title_label}"
-                    "</div>"
-                    "</div>"
-                )
-            )
-
-        title_leaders_html = (
-            "<style>"
-
-            ".title-leader-list {"
-            "border:1px solid rgba(128,128,128,0.30);"
-            "border-radius:0.8rem;"
-            "overflow:hidden;"
-            "}"
-
-            ".title-leader-row {"
-            "display:grid;"
-            "grid-template-columns:5.5rem minmax(8rem,2fr) "
-            "minmax(7rem,1fr);"
-            "align-items:center;"
-            "min-height:4.2rem;"
-            "padding:0.7rem 1rem;"
-            "border-bottom:1px solid rgba(128,128,128,0.20);"
-            "gap:0.75rem;"
-            "}"
-
-            ".title-leader-row:last-child {"
-            "border-bottom:none;"
-            "}"
-
-            ".title-leader-rank {"
-            "font-weight:800;"
-            "text-align:right;"
-            "}"
-
-            ".title-leader-player {"
-            "font-size:1.1rem;"
-            "font-weight:800;"
-            "}"
-
-            ".title-leader-count {"
-            "font-weight:750;"
-            "text-align:right;"
-            "}"
-
-            "@media (max-width:768px) {"
-
-            ".title-leader-row {"
-            "grid-template-columns:var(--mobile-table-columns);"
-            "gap:var(--mobile-table-gap);"
-            "padding:var(--mobile-table-padding);"
-            "min-height:var(--mobile-table-height);"
-            "}"
-
-            ".title-leader-rank {"
-            "padding-right:1.9rem;"
-            "white-space:nowrap;"
-            "}"
-
-            "}"
-
-            "</style>"
-
-            "<div class='title-leader-list'>"
-            f"{''.join(title_rows_html)}"
-            "</div>"
-        )
+            player_id = winner_id_by_name.get(player)
+            if player_id is not None:
+                title_links[(row_index, 1)] = player_profile_url(player_id)
+            if rank == 1:
+                title_highlights[row_index] = "winners"
 
         st.markdown(
-            title_leaders_html,
+            dashboard_table_html(
+                ["Rank", "Player", "Titles"],
+                title_rows,
+                columns=(
+                    "minmax(5.5rem,0.55fr) minmax(10rem,2fr) "
+                    "minmax(7rem,1fr)"
+                ),
+                row_highlights=title_highlights,
+                cell_links=title_links,
+                emphasis_column=1,
+            ),
             unsafe_allow_html=True,
         )
 

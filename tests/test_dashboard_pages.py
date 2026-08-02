@@ -17,6 +17,10 @@ if str(SRC_DIR) not in sys.path:
 from dashboard_pages.forecast_format import (  # noqa: E402
     format_winners_probability,
 )
+from dashboard_pages.navigation_routes import (  # noqa: E402
+    player_profile_url,
+    tournament_archive_url,
+)
 from dashboard_pages.tournament_control_center import (  # noqa: E402
     group_ready_matches,
 )
@@ -104,6 +108,18 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
             format_winners_probability(0.0, "Losers Locked"),
             "0.0%",
         )
+
+    def test_internal_detail_routes_use_stable_identifiers(self) -> None:
+        self.assertEqual(
+            player_profile_url("player/a & b"),
+            "?page=Players&player_id=player%2Fa%20%26%20b",
+        )
+        self.assertEqual(
+            tournament_archive_url(13),
+            "?page=Tournaments&tournament=13",
+        )
+        with self.assertRaises(ValueError):
+            tournament_archive_url(0)
 
     def test_monte_carlo_declares_every_data_dependency(self) -> None:
         self.assert_render_parameters(
@@ -279,6 +295,31 @@ class TournamentControlCenterTests(unittest.TestCase):
         self.assertIn("A &amp; B", markup)
         self.assertIn("&lt;Player&gt;", markup)
         self.assertNotIn("<Player>", markup)
+
+    def test_dashboard_table_supports_safe_internal_cell_links(self) -> None:
+        markup = dashboard_table_html(
+            ["Player"],
+            [["A & B"]],
+            columns="1fr",
+            cell_links={(0, 0): "?page=Players&player_id=a%26b"},
+            emphasis_column=0,
+        )
+
+        self.assertIn('class="control-table-link"', markup)
+        self.assertIn(
+            'href="?page=Players&amp;player_id=a%26b"',
+            markup,
+        )
+        self.assertIn("A &amp; B", markup)
+        self.assertIn("focus-visible", markup)
+
+        with self.assertRaises(ValueError):
+            dashboard_table_html(
+                ["Player"],
+                [["Unsafe"]],
+                columns="1fr",
+                cell_links={(0, 0): "javascript:alert(1)"},
+            )
 
     def test_clickable_card_styles_use_shared_hover_language(self) -> None:
         styles = clickable_card_button_styles("example_card_")

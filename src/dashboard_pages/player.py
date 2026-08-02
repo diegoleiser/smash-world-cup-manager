@@ -35,7 +35,41 @@ def render_player_page(
 ) -> None:
     st.title("👤 Player profile")
 
+    requested_player_id = st.query_params.get(
+        "player_id"
+    )
+    requested_player = st.query_params.get(
+        "player"
+    )
     players = load_players(include_inactive)
+    if not include_inactive:
+        requested_player_is_visible = any(
+            str(player["player_id"]) == requested_player_id
+            or str(player["display_name"]) == requested_player
+            for player in players
+        )
+        if not requested_player_is_visible and (
+            requested_player_id is not None
+            or requested_player is not None
+        ):
+            requested_inactive_player = next(
+                (
+                    player
+                    for player in load_players(True)
+                    if (
+                        str(player["player_id"]) == requested_player_id
+                        or str(player["display_name"]) == requested_player
+                    )
+                ),
+                None,
+            )
+            if requested_inactive_player is not None:
+                players = sorted(
+                    [*players, requested_inactive_player],
+                    key=lambda player: str(
+                        player["display_name"]
+                    ).casefold(),
+                )
     if not players:
         st.warning("No players found.")
         return
@@ -44,16 +78,24 @@ def render_player_page(
         player["display_name"]: str(player["player_id"])
         for player in players
     }
+    player_name_by_id = {
+        str(player["player_id"]): str(player["display_name"])
+        for player in players
+    }
 
     player_names = list(
         player_by_name
     )
 
-    requested_player = st.query_params.get(
-        "player"
-    )
-
     if (
+        requested_player_id in player_name_by_id
+        and st.session_state.get("selected_player_name")
+        != player_name_by_id[requested_player_id]
+    ):
+        st.session_state["selected_player_name"] = (
+            player_name_by_id[requested_player_id]
+        )
+    elif (
         requested_player in player_by_name
         and st.session_state.get("selected_player_name")
         != requested_player
@@ -71,9 +113,13 @@ def render_player_page(
         )
 
     def update_selected_player_url() -> None:
+        selected_player_name = st.session_state[
+            "selected_player_name"
+        ]
+        st.query_params.clear()
         st.query_params["page"] = "Players"
-        st.query_params["player"] = (
-            st.session_state["selected_player_name"]
+        st.query_params["player_id"] = (
+            player_by_name[selected_player_name]
         )
 
 

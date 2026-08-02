@@ -638,6 +638,7 @@ def load_tournaments() -> list[dict[str, Any]]:
                 t.tournament_id,
                 t.tournament_number,
                 t.tournament_date,
+                winner.player_id AS winner_id,
                 winner.display_name AS winner,
                 COUNT(DISTINCT tp.player_id) AS participants,
                 COUNT(DISTINCT m.match_id) AS matches,
@@ -653,6 +654,7 @@ def load_tournaments() -> list[dict[str, Any]]:
                 t.tournament_id,
                 t.tournament_number,
                 t.tournament_date,
+                winner.player_id,
                 winner.display_name,
                 t.match_data_available
             ORDER BY t.tournament_number DESC
@@ -664,6 +666,7 @@ def load_tournaments() -> list[dict[str, Any]]:
             "WC": f"WC {row['tournament_number']:02d}",
             "Date": row["tournament_date"],
             "Winner": row["winner"] or "Unknown",
+            "Winner ID": row["winner_id"],
             "Participants": row["participants"] or 0,
             "Matches": row["matches"] or 0,
             "Match data": "Yes" if row["match_data_available"] else "No",

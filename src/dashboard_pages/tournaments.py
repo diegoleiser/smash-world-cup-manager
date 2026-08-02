@@ -607,6 +607,34 @@ def render_tournaments(
         return
 
     tournament_numbers = [int(row["WC"].split()[1]) for row in tournaments]
+    requested_tournament = st.query_params.get("tournament")
+    try:
+        requested_tournament_number = int(requested_tournament)
+    except (TypeError, ValueError):
+        requested_tournament_number = None
+
+    if (
+        requested_tournament_number in tournament_numbers
+        and st.session_state.get("selected_tournament_number")
+        != requested_tournament_number
+    ):
+        st.session_state["selected_tournament_number"] = (
+            requested_tournament_number
+        )
+
+    if (
+        st.session_state.get("selected_tournament_number")
+        not in tournament_numbers
+    ):
+        st.session_state["selected_tournament_number"] = tournament_numbers[0]
+
+    def update_selected_tournament_url() -> None:
+        st.query_params.clear()
+        st.query_params["page"] = "Tournaments"
+        st.query_params["tournament"] = str(
+            st.session_state["selected_tournament_number"]
+        )
+
     st.markdown(
         _archived_tournament_selector_styles(),
         unsafe_allow_html=True,
@@ -616,6 +644,8 @@ def render_tournaments(
             "Select tournament",
             tournament_numbers,
             format_func=lambda number: f"WC {number:02d}",
+            key="selected_tournament_number",
+            on_change=update_selected_tournament_url,
         )
     detail = load_tournament_detail(int(selected_number))
     tournament = detail["tournament"]
