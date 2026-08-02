@@ -10,6 +10,11 @@ import pandas as pd
 import streamlit as st
 
 import narratives
+from dashboard_pages.navigation_routes import (
+    player_profile_url,
+    tournament_archive_url,
+)
+from dashboard_pages.ui_components import internal_dashboard_link
 
 
 def player_initials(name: str) -> str:
@@ -742,10 +747,16 @@ def render_player_page(
         rivalry_detail = (
             f"{featured_rivalry['matches']} sets"
         )
+        rivalry_name_html = internal_dashboard_link(
+            rivalry_name,
+            player_profile_url(str(featured_rivalry["opponent_id"])),
+            class_name="player-profile-link",
+        )
     else:
         rivalry_name = "–"
         rivalry_record = "No rivalry available"
         rivalry_detail = "–"
+        rivalry_name_html = html.escape(rivalry_name)
 
     if nemesis:
         nemesis_name = str(
@@ -758,10 +769,16 @@ def render_player_page(
         nemesis_detail = (
             f"{nemesis['winrate']:.1f}% win rate"
         )
+        nemesis_name_html = internal_dashboard_link(
+            nemesis_name,
+            player_profile_url(str(nemesis["opponent_id"])),
+            class_name="player-profile-link",
+        )
     else:
         nemesis_name = "–"
         nemesis_record = "No nemesis available"
         nemesis_detail = "–"
+        nemesis_name_html = html.escape(nemesis_name)
 
     win_streak = int(
         insights["longest_win_streak"]
@@ -783,6 +800,25 @@ def render_player_page(
         "gap:1rem;"
         "margin-top:1rem;"
         "margin-bottom:1.25rem;"
+        "}"
+
+        ".player-profile-link,"
+        ".player-profile-link:link,"
+        ".player-profile-link:visited {"
+        "color:inherit!important;"
+        "font-weight:inherit;"
+        "text-decoration:none!important;"
+        "transition:opacity 0.15s ease;"
+        "}"
+
+        ".player-profile-link:hover {"
+        "opacity:0.7;"
+        "}"
+
+        ".player-profile-link:focus-visible {"
+        "border-radius:0.25rem;"
+        "outline:2px solid var(--primary-color, rgb(255,75,75));"
+        "outline-offset:3px;"
         "}"
 
         ".player-matchup-card {"
@@ -906,7 +942,7 @@ def render_player_page(
         "FEATURED RIVALRY"
         "</div>"
         "<div class='player-insight-value'>"
-        f"{html.escape(rivalry_name)}"
+        f"{rivalry_name_html}"
         "</div>"
         "<div class='player-insight-record'>"
         f"{html.escape(rivalry_record)}"
@@ -922,7 +958,7 @@ def render_player_page(
         "NEMESIS"
         "</div>"
         "<div class='player-insight-value'>"
-        f"{html.escape(nemesis_name)}"
+        f"{nemesis_name_html}"
         "</div>"
         "<div class='player-insight-record'>"
         f"{html.escape(nemesis_record)}"
@@ -1000,6 +1036,13 @@ def render_player_page(
                     "Unknown tournament",
                 )
             )
+            jump_tournament_html = internal_dashboard_link(
+                jump_tournament,
+                tournament_archive_url(
+                    int(best_elo_event["tournament_number"])
+                ),
+                class_name="player-profile-link",
+            )
 
             elo_jump_html = (
                 "<style>"
@@ -1056,7 +1099,7 @@ def render_player_page(
                 "BIGGEST ELO JUMP"
                 "</div>"
                 "<div class='elo-jump-detail'>"
-                f"Recorded at {html.escape(jump_tournament)}"
+                f"Recorded at {jump_tournament_html}"
                 "</div>"
                 "</div>"
 
@@ -1556,6 +1599,13 @@ def render_player_page(
 
             best_rank_raw: Any = best_rank_row["rank"]
             best_rank_value = int(best_rank_raw)
+            best_rank_tournament_html = internal_dashboard_link(
+                str(best_rank_row["tournament"]),
+                tournament_archive_url(
+                    int(best_rank_row["tournament_number"])
+                ),
+                class_name="player-profile-link",
+            )
 
             rank_scale = alt.Scale(
                 domain=[
@@ -1889,7 +1939,7 @@ def render_player_page(
                 "</div>"
                 "</div>"
                 "<div class='rank-summary-value'>"
-                f"{html.escape(str(best_rank_row['tournament']))}"
+                f"{best_rank_tournament_html}"
                 "</div>"
                 "</div>"
 
@@ -1983,14 +2033,24 @@ def render_player_page(
                         "player-tournament-placement"
                     )
 
+                tournament_name_html = internal_dashboard_link(
+                    f"{tournament_icon} {tournament_name}".strip(),
+                    tournament_archive_url(int(entry["tournament_number"])),
+                    class_name="player-profile-link",
+                )
+                tournament_winner_html = internal_dashboard_link(
+                    tournament_winner,
+                    player_profile_url(str(entry["winner_id"])),
+                    class_name="player-profile-link",
+                )
+
                 tournament_history_rows.append(
                     (
                         f"<div class='{row_class}'>"
 
                         "<div class='player-tournament-main'>"
                         "<div class='player-tournament-name'>"
-                        f"{html.escape(tournament_icon)} "
-                        f"{html.escape(tournament_name)}"
+                        f"{tournament_name_html}"
                         "</div>"
                         "<div class='player-tournament-date'>"
                         f"{html.escape(formatted_date)}"
@@ -2015,7 +2075,7 @@ def render_player_page(
                         "TOURNAMENT CHAMPION"
                         "</div>"
                         "<div class='player-tournament-winner-name'>"
-                        f"{html.escape(tournament_winner)}"
+                        f"{tournament_winner_html}"
                         "</div>"
                         "</div>"
 
@@ -2208,6 +2268,11 @@ def render_player_page(
                 opponent_name = str(
                     row["opponent"]
                 )
+                opponent_name_html = internal_dashboard_link(
+                    opponent_name,
+                    player_profile_url(str(row["opponent_id"])),
+                    class_name="player-profile-link",
+                )
 
                 wins = int(
                     row["wins"]
@@ -2275,7 +2340,7 @@ def render_player_page(
 
                         "<div class='opponent-record-main'>"
                         "<div class='opponent-record-name'>"
-                        f"{html.escape(opponent_name)}"
+                        f"{opponent_name_html}"
                         "</div>"
                         "<div class='opponent-record-summary "
                         f"{result_class}'>"

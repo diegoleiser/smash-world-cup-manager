@@ -5,6 +5,27 @@ from __future__ import annotations
 import html
 
 
+def internal_dashboard_link(
+    label: str,
+    href: str,
+    *,
+    class_name: str = "control-table-link",
+) -> str:
+    """Return an escaped same-app link for custom dashboard markup."""
+
+    link_text = str(href)
+    if not (
+        link_text.startswith("?")
+        or (link_text.startswith("/") and not link_text.startswith("//"))
+    ):
+        raise ValueError("Dashboard links must use internal URLs.")
+    return (
+        f'<a class="{html.escape(class_name, quote=True)}" '
+        f'href="{html.escape(link_text, quote=True)}" target="_self">'
+        f"{html.escape(str(label))}</a>"
+    )
+
+
 def archived_match_result_html(
     context_label: str,
     player_1_name: str,
@@ -236,12 +257,7 @@ def dashboard_table_html(
                     raise ValueError(
                         "Dashboard table links must be internal query URLs."
                     )
-                cell_content = (
-                    '<a class="control-table-link" '
-                    f'href="{html.escape(link_text, quote=True)}" '
-                    'target="_self">'
-                    f"{cell_content}</a>"
-                )
+                cell_content = internal_dashboard_link(value_text, link_text)
             cells.append(
                 f'<div class="control-table-cell{emphasis_class}'
                 f'{movement_class}">{cell_content}</div>'

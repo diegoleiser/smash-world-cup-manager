@@ -10,6 +10,11 @@ import pandas as pd
 import streamlit as st
 
 import narratives
+from dashboard_pages.navigation_routes import (
+    player_profile_url,
+    tournament_archive_url,
+)
+from dashboard_pages.ui_components import dashboard_table_html
 from tournament.archived_bracket import build_archived_bracket_matches
 
 
@@ -819,6 +824,7 @@ def render_matchups(
     with tab_matches:
         if h2h["history"]:
             match_rows = []
+            match_links: dict[tuple[int, int], str] = {}
 
             bracket_labels_by_tournament: dict[
                 int,
@@ -883,32 +889,45 @@ def render_matchups(
                             or "–"
                         )
 
+                row_index = len(match_rows)
                 match_rows.append(
-                    {
-                        "Tournament": match["tournament"],
-                        "Date": (
+                    [
+                        match["tournament"],
+                        (
                             pd.to_datetime(
                                 match["date"]
                             ).strftime("%d %b %Y")
                             if match["date"]
                             else "–"
                         ),
-                        "Round": round_text,
-                        "Winner": (
+                        round_text,
+                        (
                             match["winner"]
                             or "Pending"
                         ),
-                        "Result": (
+                        (
                             match["score"]
                             or "–"
                         ),
-                    }
+                    ]
                 )
+                match_links[(row_index, 0)] = tournament_archive_url(
+                    tournament_number
+                )
+                if match.get("winner_id"):
+                    match_links[(row_index, 3)] = player_profile_url(
+                        str(match["winner_id"])
+                    )
 
-            st.dataframe(
-                pd.DataFrame(match_rows),
-                hide_index=True,
-                width="stretch",
+            st.markdown(
+                dashboard_table_html(
+                    ["Tournament", "Date", "Round", "Winner", "Result"],
+                    match_rows,
+                    columns="1fr 1fr 1.5fr 1.2fr 0.7fr",
+                    emphasis_column=3,
+                    cell_links=match_links,
+                ),
+                unsafe_allow_html=True,
             )
         else:
             st.info("No head-to-head matches available.")

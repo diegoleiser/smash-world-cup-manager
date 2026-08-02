@@ -184,6 +184,7 @@ def load_player_insights(player_id: str) -> dict[str, Any]:
 
         opponent_rows.append(
             {
+                "opponent_id": opponent_id,
                 "opponent": opponent["display_name"],
                 "matches": decided,
                 "wins": h2h["player_a"]["wins"],
@@ -264,6 +265,7 @@ def load_player_insights(player_id: str) -> dict[str, Any]:
             player_changes.append(
                 {
                     "tournament": current["tournament"],
+                    "tournament_number": current["tournament_number"],
                     "elo_change": change,
                 }
             )

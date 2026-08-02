@@ -38,6 +38,7 @@ from dashboard_pages.tournaments import (  # noqa: E402
 from dashboard_pages.ui_components import (  # noqa: E402
     archived_match_result_html,
     clickable_card_button_styles,
+    internal_dashboard_link,
     compact_score_input_styles,
     dashboard_table_html,
     up_next_matchup_html,
@@ -337,6 +338,19 @@ class TournamentControlCenterTests(unittest.TestCase):
                 columns="1fr",
                 cell_links={(0, 0): "//example.com/player"},
             )
+
+    def test_custom_markup_supports_safe_internal_links(self) -> None:
+        markup = internal_dashboard_link(
+            "A & <B>",
+            "/players?player_id=a%26b",
+            class_name="profile-link",
+        )
+
+        self.assertIn('class="profile-link"', markup)
+        self.assertIn('href="/players?player_id=a%26b"', markup)
+        self.assertIn("A &amp; &lt;B&gt;", markup)
+        with self.assertRaises(ValueError):
+            internal_dashboard_link("Unsafe", "https://example.com")
 
     def test_clickable_card_styles_use_shared_hover_language(self) -> None:
         styles = clickable_card_button_styles("example_card_")
