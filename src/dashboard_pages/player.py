@@ -2107,11 +2107,11 @@ def render_player_page(
                         "</div>"
 
                         "<div class='player-tournament-winner'>"
-                        "<div class='player-tournament-winner-label'>"
-                        "TOURNAMENT CHAMPION"
-                        "</div>"
                         "<div class='player-tournament-winner-name'>"
                         f"{tournament_winner_html}"
+                        "</div>"
+                        "<div class='player-tournament-winner-label'>"
+                        "TOURNAMENT CHAMPION"
                         "</div>"
                         "</div>"
 
@@ -2206,12 +2206,13 @@ def render_player_page(
                 "font-weight:700;"
                 "letter-spacing:0.04em;"
                 "opacity:0.52;"
+                "margin-top:0.18rem;"
                 "}"
 
                 ".player-tournament-winner-name {"
                 "font-size:0.98rem;"
                 "font-weight:750;"
-                "margin-top:0.18rem;"
+                "margin-top:0;"
                 "}"
 
                 "@media (max-width:1100px) {"
@@ -2235,10 +2236,10 @@ def render_player_page(
                 "@media (max-width:700px) {"
 
                 ".player-tournament-row {"
-                "grid-template-columns:repeat(4, minmax(0, 1fr));"
-                "gap:0.35rem;"
+                "grid-template-columns:1.25fr 0.85fr 0.8fr 1.1fr;"
+                "gap:0.45rem;"
                 "min-height:5rem;"
-                "padding:0.8rem 0.7rem;"
+                "padding:0.85rem 0.75rem;"
                 "}"
 
                 ".player-tournament-name {"
@@ -2246,7 +2247,7 @@ def render_player_page(
                 "}"
 
                 ".player-tournament-date {"
-                "font-size:0.76rem;"
+                "font-size:0.8rem;"
                 "}"
 
                 ".player-tournament-placement {"
@@ -2259,15 +2260,18 @@ def render_player_page(
                 "}"
 
                 ".player-tournament-record-label {"
-                "font-size:0.62rem;"
+                "font-size:0.68rem;"
                 "}"
 
                 ".player-tournament-winner-label {"
-                "display:none;"
+                "display:block;"
+                "font-size:0.62rem;"
+                "margin-top:0.15rem;"
                 "}"
 
                 ".player-tournament-winner-name {"
-                "font-size:0.92rem;"
+                "font-size:0.96rem;"
+                "margin-top:0;"
                 "white-space:nowrap;"
                 "overflow:hidden;"
                 "text-overflow:ellipsis;"
