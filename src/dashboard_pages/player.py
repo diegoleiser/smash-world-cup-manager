@@ -27,6 +27,61 @@ def player_initials(name: str) -> str:
         return parts[0][:2].upper()
     return f"{parts[0][0]}{parts[-1][0]}".upper()
 
+
+def _player_selector_styles() -> str:
+    """Return the shared card language for the player selector."""
+
+    return """
+    <style>
+    div[class*="st-key-player_profile_selector"] {
+        margin-bottom: 0.85rem;
+        padding: 0.55rem 0.85rem 0.75rem;
+        border: 1px solid rgba(128, 128, 128, 0.30);
+        border-radius: 0.8rem;
+        background: rgba(255, 255, 255, 0.018);
+        transition:
+            border-color 0.15s ease,
+            background-color 0.15s ease,
+            box-shadow 0.15s ease;
+    }
+    div[class*="st-key-player_profile_selector"]:hover {
+        border-color: rgba(128, 128, 128, 0.48);
+        background: rgba(128, 128, 128, 0.035);
+    }
+    div[class*="st-key-player_profile_selector"]:focus-within {
+        border-color: var(--primary-color, rgb(255, 75, 75));
+        box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.18);
+    }
+    div[class*="st-key-player_profile_selector"] label p {
+        color: rgba(250, 250, 250, 0.72);
+        font-size: 0.82rem !important;
+        font-weight: 750 !important;
+    }
+    div[class*="st-key-player_profile_selector"]
+    [data-baseweb="select"] > div {
+        min-height: 3.65rem !important;
+        border: none !important;
+        border-radius: 0.55rem !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+    }
+    div[class*="st-key-player_profile_selector"]
+    [role="combobox"],
+    div[class*="st-key-player_profile_selector"]
+    [role="combobox"] *,
+    div[class*="st-key-player_profile_selector"]
+    [aria-haspopup="listbox"],
+    div[class*="st-key-player_profile_selector"]
+    [aria-haspopup="listbox"] *,
+    div[class*="st-key-player_profile_selector"]
+    [data-baseweb="select"] * {
+        font-size: 1.4rem !important;
+        font-weight: 800 !important;
+        line-height: 1.2 !important;
+    }
+    </style>
+    """
+
 def render_player_page(
     include_inactive: bool,
     *,
@@ -128,47 +183,14 @@ def render_player_page(
 
 
 
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stSelectbox"] {
-            margin-bottom:0.25rem;
-        }
-
-        div[data-testid="stSelectbox"] label {
-            font-size:0.95rem;
-            font-weight:800;
-            letter-spacing:0.02em;
-            opacity:0.88;
-            margin-bottom:0.45rem;
-        }
-
-        div[data-testid="stSelectbox"]
-        div[data-baseweb="select"] > div {
-            min-height:3.7rem;
-            border-radius:0.7rem;
-            border-color:rgba(128,128,128,0.34);
-            background:rgba(128,128,128,0.07);
-            font-size:1.1rem;
-            font-weight:750;
-        }
-
-        div[data-testid="stSelectbox"]
-        div[data-baseweb="select"] > div:hover {
-            border-color:rgba(128,128,128,0.48);
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-    selected_name = st.selectbox(
-        "Select player",
-        options=player_names,
-        key="selected_player_name",
-        on_change=update_selected_player_url,
-    )
+    st.markdown(_player_selector_styles(), unsafe_allow_html=True)
+    with st.container(key="player_profile_selector"):
+        selected_name = st.selectbox(
+            "Select player",
+            options=player_names,
+            key="selected_player_name",
+            on_change=update_selected_player_url,
+        )
 
     st.divider()
 

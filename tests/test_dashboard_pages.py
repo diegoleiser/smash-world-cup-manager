@@ -21,6 +21,7 @@ from dashboard_pages.navigation_routes import (  # noqa: E402
     player_profile_url,
     tournament_archive_url,
 )
+from dashboard_pages.player import _player_selector_styles  # noqa: E402
 from dashboard_pages.tournament_control_center import (  # noqa: E402
     group_ready_matches,
 )
@@ -121,6 +122,14 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             tournament_archive_url(0)
+
+    def test_player_selector_uses_archived_selector_card_language(self) -> None:
+        styles = _player_selector_styles()
+
+        self.assertIn("st-key-player_profile_selector", styles)
+        self.assertIn("border-radius: 0.8rem", styles)
+        self.assertIn(":focus-within", styles)
+        self.assertIn("background-color: transparent", styles)
 
     def test_dashboard_uses_official_page_navigation(self) -> None:
         dashboard_source = (PROJECT_ROOT / "dashboard.py").read_text()
