@@ -286,7 +286,13 @@ def dashboard_table_html(
 
     if mobile_visible_rows is not None and mobile_visible_rows < 1:
         raise ValueError("Mobile visible rows must be positive.")
-    if mobile_card_variant not in {None, "ranking", "tournament", "titles"}:
+    if mobile_card_variant not in {
+        None,
+        "ranking",
+        "tournament",
+        "titles",
+        "match-history",
+    }:
         raise ValueError("Unknown mobile card variant.")
     hidden_mobile_rows = (
         row_html[mobile_visible_rows:]
@@ -620,6 +626,55 @@ def dashboard_table_html(
                 padding-top: 0.1rem;
                 font-size: 1.35rem;
                 line-height: 1.15;
+            }
+            .control-table-mobile-match-history .control-table-row {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                grid-template-rows: auto auto auto;
+                gap: 0.65rem 1rem;
+                padding: 0.9rem 1rem;
+            }
+            .control-table-mobile-match-history
+            .control-table-cell[data-label="Tournament"] {
+                order: 1;
+                grid-column: 1 / 2;
+                grid-row: 1 / 2;
+                font-size: 1.15rem;
+                font-weight: 800;
+            }
+            .control-table-mobile-match-history
+            .control-table-cell[data-label="Date"] {
+                order: 2;
+                grid-column: 2 / 3;
+                grid-row: 1 / 2;
+                align-items: flex-end;
+                text-align: right;
+            }
+            .control-table-mobile-match-history
+            .control-table-cell[data-label="Round"] {
+                order: 3;
+                grid-column: 1 / -1;
+                grid-row: 2 / 3;
+                padding: 0.05rem 0;
+                font-size: 1rem;
+                font-weight: 750;
+            }
+            .control-table-mobile-match-history
+            .control-table-cell[data-label="Winner"] {
+                order: 4;
+                grid-column: 1 / 2;
+                grid-row: 3 / 4;
+                font-size: 1.05rem;
+                font-weight: 800;
+            }
+            .control-table-mobile-match-history
+            .control-table-cell[data-label="Result"] {
+                order: 5;
+                grid-column: 2 / 3;
+                grid-row: 3 / 4;
+                align-items: flex-end;
+                font-size: 1.05rem;
+                font-weight: 800;
+                text-align: right;
             }
         }
         @media (min-width: 701px) {

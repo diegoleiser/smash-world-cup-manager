@@ -410,6 +410,15 @@ class TournamentControlCenterTests(unittest.TestCase):
         self.assertIn("control-table-mobile-tournament", tournament_markup)
         self.assertIn("control-table-mobile-titles", titles_markup)
 
+        history_markup = dashboard_table_html(
+            ["Tournament", "Date", "Round", "Winner", "Result"],
+            [["WC 13", "28 Feb 2026", "Group Round 3", "Diego", "1–2"]],
+            columns="repeat(5, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="match-history",
+        )
+        self.assertIn("control-table-mobile-match-history", history_markup)
+
     def test_clickable_card_styles_use_shared_hover_language(self) -> None:
         styles = clickable_card_button_styles("example_card_")
 
