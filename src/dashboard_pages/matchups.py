@@ -499,7 +499,7 @@ def render_matchups(
             lambda value: str(value),
         ),
         (
-            "Match Wins",
+            "Set Wins",
             left_profile.get("wins", 0),
             right_profile.get("wins", 0),
             False,
@@ -651,7 +651,7 @@ def render_matchups(
         [
             "Overview",
             "Elo & Ranking",
-            "Match History",
+            "Set History",
         ]
     )
 
@@ -1066,4 +1066,4 @@ def render_matchups(
                 unsafe_allow_html=True,
             )
         else:
-            st.info("No head-to-head matches available.")
+            st.info("No head-to-head sets available.")

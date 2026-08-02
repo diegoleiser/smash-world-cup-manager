@@ -428,6 +428,33 @@ class TournamentControlCenterTests(unittest.TestCase):
         )
         self.assertIn("control-table-mobile-match-history", history_markup)
 
+        standings_markup = dashboard_table_html(
+            ["Rank", "Player", "Set Record", "Game Record"],
+            [["#1", "Tamira", "5–1", "11–2"]],
+            columns="repeat(4, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="standings",
+        )
+        match_markup = dashboard_table_html(
+            ["Round", "Set", "Result", "Winner"],
+            [["3", "Diego vs Tamira", "1–2", "Tamira"]],
+            columns="repeat(4, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="tournament-match",
+        )
+        self.assertIn("control-table-mobile-standings", standings_markup)
+        self.assertIn("control-table-mobile-tournament-match", match_markup)
+
+        for variant in ("final-standings", "elo-change", "elo-ranking"):
+            markup = dashboard_table_html(
+                ["Player"],
+                [["Tamira"]],
+                columns="1fr",
+                mobile_cards=True,
+                mobile_card_variant=variant,
+            )
+            self.assertIn(f"control-table-mobile-{variant}", markup)
+
     def test_clickable_card_styles_use_shared_hover_language(self) -> None:
         styles = clickable_card_button_styles("example_card_")
 
@@ -541,7 +568,7 @@ class TournamentPageTests(unittest.TestCase):
         self.assertIn("WC 08", markup)
         self.assertIn("2026-07-31", markup)
         self.assertIn("4 Participants", markup)
-        self.assertIn("14 Matches", markup)
+        self.assertIn("14 Sets", markup)
         self.assertIn("Champion", markup)
         self.assertIn("archive-tournament-desktop-meta", markup)
         self.assertIn("display: none", markup)
@@ -641,8 +668,8 @@ class TournamentPageTests(unittest.TestCase):
         self.assertEqual(
             tables[0]["rows"],
             [
-                ["#1", "Alpha", "1–0", "2–0", "▲ +2"],
-                ["#2", "Beta", "0–1", "0–2", "▼ -2"],
+                ["#1", "Alpha", "1–0", "2–0"],
+                ["#2", "Beta", "0–1", "0–2"],
             ],
         )
         self.assertEqual(tables[0]["highlights"], {0: "winners"})

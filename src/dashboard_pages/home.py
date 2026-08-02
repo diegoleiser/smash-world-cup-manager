@@ -280,7 +280,7 @@ def render_home(
 
     if not ranking:
         st.warning(
-            "No rated Elo matches found yet."
+            "No rated Elo sets found yet."
         )
         return
 

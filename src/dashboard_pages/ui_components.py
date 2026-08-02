@@ -292,6 +292,11 @@ def dashboard_table_html(
         "tournament",
         "titles",
         "match-history",
+        "standings",
+        "tournament-match",
+        "final-standings",
+        "elo-change",
+        "elo-ranking",
     }:
         raise ValueError("Unknown mobile card variant.")
     hidden_mobile_rows = (
@@ -435,6 +440,10 @@ def dashboard_table_html(
                 border: 1px solid rgba(128, 128, 128, 0.30);
                 border-radius: 0.8rem;
                 background: rgba(255, 255, 255, 0.018);
+            }
+            .control-table-mobile-cards .control-table-row-winners {
+                background: rgba(34, 197, 94, 0.07);
+                box-shadow: inset 3px 0 rgba(74, 222, 128, 0.42);
             }
             .control-table-mobile-cards .control-table-row:last-child {
                 margin-bottom: 0;
@@ -675,6 +684,197 @@ def dashboard_table_html(
                 font-size: 1.05rem;
                 font-weight: 800;
                 text-align: right;
+            }
+            .control-table-mobile-standings .control-table-row {
+                grid-template-columns: 3.4rem repeat(2, minmax(0, 1fr));
+                grid-template-rows: auto auto;
+                gap: 0.8rem 0.75rem;
+                padding: 0.95rem 1rem;
+            }
+            .control-table-mobile-standings
+            .control-table-cell[data-label="Rank"] {
+                order: 1;
+                grid-column: 1 / 2;
+                grid-row: 1 / 3;
+                justify-content: center;
+                color: rgba(250, 250, 250, 0.78);
+                font-size: 1.1rem;
+                font-weight: 800;
+            }
+            .control-table-mobile-standings
+            .control-table-cell[data-label="Player"] {
+                order: 2;
+                grid-column: 2 / -1;
+                grid-row: 1 / 2;
+                font-size: 1.3rem;
+                line-height: 1.15;
+            }
+            .control-table-mobile-standings
+            .control-table-cell[data-label="Set Record"] {
+                order: 3;
+                grid-column: 2 / 3;
+                grid-row: 2 / 3;
+            }
+            .control-table-mobile-standings
+            .control-table-cell[data-label="Game Record"] {
+                order: 4;
+                grid-column: 3 / 4;
+                grid-row: 2 / 3;
+            }
+            .control-table-mobile-standings
+            .control-table-cell[data-label="Set Record"],
+            .control-table-mobile-standings
+            .control-table-cell[data-label="Game Record"] {
+                font-size: 1rem;
+                font-weight: 800;
+            }
+            .control-table-mobile-tournament-match .control-table-row {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                grid-template-rows: auto auto auto;
+                gap: 0.65rem 1rem;
+                padding: 0.9rem 1rem;
+            }
+            .control-table-mobile-tournament-match
+            .control-table-cell[data-label="Round"] {
+                order: 1;
+                grid-column: 1 / 2;
+                grid-row: 1 / 2;
+            }
+            .control-table-mobile-tournament-match
+            .control-table-cell[data-label="Result"] {
+                order: 2;
+                grid-column: 2 / 3;
+                grid-row: 1 / 2;
+                align-items: flex-end;
+                font-size: 1.3rem;
+                font-weight: 800;
+                text-align: right;
+            }
+            .control-table-mobile-tournament-match
+            .control-table-cell[data-label="Set"] {
+                order: 3;
+                grid-column: 1 / -1;
+                grid-row: 2 / 3;
+                padding: 0.05rem 0;
+                font-size: 1.2rem;
+                line-height: 1.2;
+            }
+            .control-table-mobile-tournament-match
+            .control-table-cell[data-label="Winner"] {
+                order: 4;
+                grid-column: 1 / -1;
+                grid-row: 3 / 4;
+                font-size: 1rem;
+                font-weight: 800;
+            }
+            .control-table-mobile-final-standings .control-table-row {
+                grid-template-columns: 4.2rem repeat(2, minmax(0, 1fr));
+                grid-template-rows: auto auto;
+                gap: 0.8rem 0.75rem;
+                padding: 0.95rem 1rem;
+            }
+            .control-table-mobile-final-standings
+            .control-table-cell[data-label="Placement"] {
+                order: 1;
+                grid-column: 1 / 2;
+                grid-row: 1 / 3;
+                justify-content: center;
+                font-size: 1.05rem;
+                font-weight: 800;
+            }
+            .control-table-mobile-final-standings
+            .control-table-cell[data-label="Player"] {
+                order: 2;
+                grid-column: 2 / -1;
+                grid-row: 1 / 2;
+                font-size: 1.3rem;
+            }
+            .control-table-mobile-final-standings
+            .control-table-cell[data-label="Initial Seed"] {
+                order: 3;
+                grid-column: 2 / 3;
+                grid-row: 2 / 3;
+            }
+            .control-table-mobile-final-standings
+            .control-table-cell[data-label="Seed Change"] {
+                order: 4;
+                grid-column: 3 / 4;
+                grid-row: 2 / 3;
+            }
+            .control-table-mobile-elo-change .control-table-row {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                grid-template-rows: auto auto;
+                gap: 0.8rem 1rem;
+                padding: 0.95rem 1rem;
+            }
+            .control-table-mobile-elo-change
+            .control-table-cell[data-label="Player"] {
+                order: 1;
+                grid-column: 1 / 2;
+                grid-row: 1 / 2;
+                font-size: 1.25rem;
+            }
+            .control-table-mobile-elo-change
+            .control-table-cell[data-label="Change"] {
+                order: 2;
+                grid-column: 2 / 3;
+                grid-row: 1 / 2;
+                align-items: flex-end;
+                font-size: 1.15rem;
+                font-weight: 800;
+                text-align: right;
+            }
+            .control-table-mobile-elo-change
+            .control-table-cell[data-label="Elo Before → After"] {
+                order: 3;
+                grid-column: 1 / 2;
+                grid-row: 2 / 3;
+            }
+            .control-table-mobile-elo-change
+            .control-table-cell[data-label="Rank"] {
+                order: 4;
+                grid-column: 2 / 3;
+                grid-row: 2 / 3;
+                align-items: flex-end;
+                text-align:right;
+            }
+            .control-table-mobile-elo-ranking .control-table-row {
+                grid-template-columns: 3.4rem repeat(2, minmax(0, 1fr));
+                grid-template-rows: auto auto;
+                gap: 0.8rem 0.75rem;
+                padding: 0.95rem 1rem;
+            }
+            .control-table-mobile-elo-ranking
+            .control-table-cell[data-label="Rank"] {
+                order:1;
+                grid-column:1 / 2;
+                grid-row:1 / 3;
+                justify-content:center;
+                font-size:1.05rem;
+                font-weight:800;
+            }
+            .control-table-mobile-elo-ranking
+            .control-table-cell[data-label="Player"] {
+                order:2;
+                grid-column:2 / -1;
+                grid-row:1 / 2;
+                font-size:1.25rem;
+            }
+            .control-table-mobile-elo-ranking
+            .control-table-cell[data-label="Elo"] {
+                order:3;
+                grid-column:2 / 3;
+                grid-row:2 / 3;
+                font-size:1rem;
+                font-weight:800;
+            }
+            .control-table-mobile-elo-ranking
+            .control-table-cell[data-label="Tournament"] {
+                order:4;
+                grid-column:3 / 4;
+                grid-row:2 / 3;
+                align-items:flex-end;
+                text-align:right;
             }
         }
         @media (min-width: 701px) {
