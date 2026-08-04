@@ -82,6 +82,130 @@ def _player_selector_styles() -> str:
     </style>
     """
 
+
+def _placement_distribution_data(
+    history: list[dict[str, Any]],
+    format_ordinal: Callable[[int], str],
+) -> list[dict[str, Any]]:
+    """Count recorded tournament finishes by placement."""
+
+    counts: dict[int, int] = {}
+    for entry in history:
+        placement = entry.get("placement")
+        if placement is None:
+            continue
+        placement_number = int(placement)
+        counts[placement_number] = counts.get(placement_number, 0) + 1
+
+    if not counts:
+        return []
+
+    maximum_placement = max(counts)
+    colors = {
+        1: "#f2c94c",
+        2: "#b8c1cc",
+        3: "#c98952",
+    }
+    return [
+        {
+            "placement": placement,
+            "placement_label": format_ordinal(placement),
+            "appearances": counts.get(placement, 0),
+            "bar_color": colors.get(placement, "#58a6ff"),
+        }
+        for placement in range(1, maximum_placement + 1)
+    ]
+
+
+def _placement_distribution_chart(
+    placement_distribution: list[dict[str, Any]],
+) -> alt.LayerChart:
+    """Build a compact card-style placement distribution chart."""
+
+    placement_frame = pd.DataFrame(placement_distribution)
+    maximum_appearances = max(
+        1,
+        int(placement_frame["appearances"].max()),
+    )
+    placement_frame["track"] = maximum_appearances
+    placement_frame["label_position"] = maximum_appearances + 0.18
+    placement_frame["count_label"] = placement_frame["appearances"].map(
+        lambda count: (
+            "Never"
+            if int(count) == 0
+            else "Once"
+            if int(count) == 1
+            else f"{int(count)} times"
+        )
+    )
+    x_scale = alt.Scale(domain=[0, maximum_appearances + 1.3])
+    y_encoding = alt.Y(
+        "placement_label:N",
+        title=None,
+        sort=alt.SortField(field="placement", order="ascending"),
+        axis=alt.Axis(
+            labelColor="#d7dce2",
+            labelFontSize=13,
+            labelFontWeight=700,
+            labelPadding=12,
+            ticks=False,
+            domain=False,
+        ),
+    )
+    tracks = (
+        alt.Chart(placement_frame)
+        .mark_bar(
+            cornerRadius=5,
+            size=22,
+            color="#252b34",
+            opacity=0.72,
+        )
+        .encode(
+            x=alt.X("track:Q", scale=x_scale, axis=None),
+            y=y_encoding,
+        )
+    )
+    bars = (
+        alt.Chart(placement_frame)
+        .mark_bar(cornerRadiusEnd=5, size=22)
+        .encode(
+            x=alt.X("appearances:Q", scale=x_scale, axis=None),
+            y=y_encoding,
+            color=alt.Color("bar_color:N", scale=None, legend=None),
+            tooltip=[
+                alt.Tooltip("placement_label:N", title="Placement"),
+                alt.Tooltip(
+                    "appearances:Q",
+                    title="Appearances",
+                    format="d",
+                ),
+            ],
+        )
+    )
+    labels = (
+        alt.Chart(placement_frame)
+        .mark_text(
+            align="left",
+            baseline="middle",
+            color="#f5f5f5",
+            fontSize=12,
+            fontWeight=700,
+        )
+        .encode(
+            x=alt.X("label_position:Q", scale=x_scale, axis=None),
+            y=y_encoding,
+            text="count_label:N",
+        )
+    )
+    return (
+        (tracks + bars + labels)
+        .properties(
+            height=max(190, len(placement_distribution) * 38),
+            padding={"left": 4, "right": 12, "top": 8, "bottom": 8},
+        )
+        .configure_view(strokeOpacity=0)
+    )
+
 def render_player_page(
     include_inactive: bool,
     *,
@@ -2027,6 +2151,10 @@ def render_player_page(
 
     with tab_history:
         if history:
+            placement_distribution = _placement_distribution_data(
+                history,
+                format_ordinal,
+            )
             tournament_history_rows: list[str] = []
 
             for entry in reversed(history):
@@ -2312,6 +2440,20 @@ def render_player_page(
                 tournament_history_html,
                 unsafe_allow_html=True,
             )
+
+            if placement_distribution:
+                st.markdown("### Placement Distribution")
+                with st.container(border=True):
+                    st.altair_chart(
+                        _placement_distribution_chart(
+                            placement_distribution
+                        ),
+                        width="stretch",
+                    )
+                    st.caption(
+                        "How often each final placement was achieved. "
+                        "Unreached positions remain visible for context."
+                    )
 
         else:
             st.info(

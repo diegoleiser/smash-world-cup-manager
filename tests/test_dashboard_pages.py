@@ -21,7 +21,11 @@ from dashboard_pages.navigation_routes import (  # noqa: E402
     player_profile_url,
     tournament_archive_url,
 )
-from dashboard_pages.player import _player_selector_styles  # noqa: E402
+from dashboard_pages.player import (  # noqa: E402
+    _placement_distribution_chart,
+    _placement_distribution_data,
+    _player_selector_styles,
+)
 from dashboard_pages.tournament_control_center import (  # noqa: E402
     group_ready_matches,
 )
@@ -131,6 +135,72 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
         self.assertIn("border-radius: 0.8rem", styles)
         self.assertIn(":focus-within", styles)
         self.assertIn("background-color: transparent", styles)
+
+    def test_player_placement_distribution_counts_and_sorts_finishes(
+        self,
+    ) -> None:
+        distribution = _placement_distribution_data(
+            [
+                {"placement": 3},
+                {"placement": 1},
+                {"placement": 3},
+                {"placement": None},
+                {"placement": 2},
+                {"placement": 1},
+                {"placement": 5},
+            ],
+            lambda placement: f"#{placement}",
+        )
+
+        self.assertEqual(
+            distribution,
+            [
+                {
+                    "placement": 1,
+                    "placement_label": "#1",
+                    "appearances": 2,
+                    "bar_color": "#f2c94c",
+                },
+                {
+                    "placement": 2,
+                    "placement_label": "#2",
+                    "appearances": 1,
+                    "bar_color": "#b8c1cc",
+                },
+                {
+                    "placement": 3,
+                    "placement_label": "#3",
+                    "appearances": 2,
+                    "bar_color": "#c98952",
+                },
+                {
+                    "placement": 4,
+                    "placement_label": "#4",
+                    "appearances": 0,
+                    "bar_color": "#58a6ff",
+                },
+                {
+                    "placement": 5,
+                    "placement_label": "#5",
+                    "appearances": 1,
+                    "bar_color": "#58a6ff",
+                },
+            ],
+        )
+
+        chart_spec = _placement_distribution_chart(distribution).to_dict()
+        self.assertEqual(len(chart_spec["layer"]), 3)
+        self.assertEqual(
+            chart_spec["height"],
+            max(190, len(distribution) * 38),
+        )
+        chart_values = chart_spec["datasets"][
+            next(iter(chart_spec["datasets"]))
+        ]
+        self.assertEqual(
+            [row["count_label"] for row in chart_values],
+            ["2 times", "Once", "2 times", "Never", "Once"],
+        )
 
     def test_dashboard_uses_official_page_navigation(self) -> None:
         dashboard_source = (PROJECT_ROOT / "dashboard.py").read_text()
