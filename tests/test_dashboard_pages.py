@@ -35,6 +35,7 @@ from dashboard_pages.tournaments import (  # noqa: E402
     _elo_snapshot_table_data,
     _final_standings_table_data,
     _phase_match_table_rows,
+    _tournament_recap_html,
 )
 from dashboard_pages.ui_components import (  # noqa: E402
     archived_match_result_html,
@@ -161,11 +162,21 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
                 "load_tournaments",
                 "load_tournament_detail",
                 "load_tournament_milestones",
+                "load_tournament_story_context",
                 "tournament_elo_changes",
                 "format_ordinal",
                 "show_archived_match_dialog",
             },
         )
+
+    def test_tournament_recap_uses_shared_summary_card_language(self) -> None:
+        markup = _tournament_recap_html("Alpha won <WC 14>.")
+
+        self.assertIn("TOURNAMENT<br>SUMMARY", markup)
+        self.assertIn("background: rgba(28, 74, 112, 0.55)", markup)
+        self.assertIn("grid-template-columns: 9rem", markup)
+        self.assertIn("Alpha won &lt;WC 14&gt;.", markup)
+        self.assertNotIn("Alpha won <WC 14>.", markup)
 
     def test_tournament_ranks_follow_inactive_player_filter(self) -> None:
         dashboard_tree = ast.parse(

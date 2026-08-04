@@ -3,7 +3,115 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from typing import Any
+
+
+def _sentence_count(text: str) -> int:
+    """Return the number of complete sentences in generated copy."""
+
+    return len(re.findall(r"[.!?](?:\s|$)", text))
+
+
+def _stable_variant(seed: str, *options: str) -> str:
+    """Select a stable wording variant without changing between reruns."""
+
+    if not options:
+        raise ValueError("At least one wording option is required.")
+    digest = hashlib.sha256(seed.encode("utf-8")).digest()
+    return options[int.from_bytes(digest[:4], "big") % len(options)]
+
+
+def _select_preview_sentences(sentences: list[str]) -> list[str]:
+    """Keep the preview concise while preserving distinct story angles."""
+
+    if not sentences:
+        return []
+
+    selected = [sentences[0]]
+    themes = (
+        ("defending champion",),
+        ("title race", "most decorated", "only active player"),
+        (
+            "recent set record",
+            "strongest recent form",
+        ),
+        ("trending upward", "dark horse"),
+        ("poor form",),
+        ("active winning streak",),
+        ("rivalry to watch",),
+        ("Their latest meeting",),
+        ("wide open", "chasing field"),
+    )
+
+    for keywords in themes:
+        candidate = next(
+            (
+                sentence
+                for sentence in sentences[1:]
+                if sentence not in selected
+                and any(keyword in sentence for keyword in keywords)
+            ),
+            None,
+        )
+        if candidate is not None:
+            selected.append(candidate)
+        if len(selected) == 9:
+            return selected
+
+    for sentence in sentences[1:]:
+        if sentence not in selected:
+            selected.append(sentence)
+        if len(selected) == 9:
+            break
+
+    return selected
+
+
+def _select_tournament_sentences(sentences: list[str]) -> list[str]:
+    """Select up to ten high-value tournament recap sentences."""
+
+    if len(sentences) <= 10:
+        return sentences
+
+    priorities = {
+        "defended the title": 100,
+        "consecutive championship": 100,
+        "World Championship title": 100,
+        "first title since": 98,
+        "same finalists": 95,
+        "podium streak": 95,
+        "career-high": 95,
+        "recorded set wins": 95,
+        "tournament appearance": 90,
+        "biggest Elo upset": 90,
+        "initial seed": 85,
+        "previous appearance": 85,
+        "title defence ended": 85,
+        "Group Stage unbeaten": 80,
+        "biggest Elo gain": 75,
+        "led the field": 65,
+        "players competed": 55,
+    }
+    ranked = sorted(
+        enumerate(sentences[1:], start=1),
+        key=lambda item: max(
+            (
+                score
+                for phrase, score in priorities.items()
+                if phrase in item[1]
+            ),
+            default=50,
+        ),
+        reverse=True,
+    )[:9]
+    selected_indexes = {0, *(index for index, _ in ranked)}
+    return [
+        sentence
+        for index, sentence in enumerate(sentences)
+        if index in selected_indexes
+    ]
 
 
 def _decided_history(h2h: dict[str, Any]) -> list[dict[str, Any]]:
@@ -42,6 +150,207 @@ def _current_streak(
     return str(streak_winner), streak_length
 
 
+def _rivalry_trajectory_sentence(
+    history: list[dict[str, Any]],
+    player_a: str,
+    player_b: str,
+) -> str | None:
+    """Describe a comeback or repeated changes of control in the series."""
+
+    wins = {player_a: 0, player_b: 0}
+    largest_deficit = {player_a: 0, player_b: 0}
+    previous_leader: str | None = None
+    lead_changes = 0
+
+    for meeting in history:
+        winner = str(meeting["winner"])
+        wins[winner] += 1
+        largest_deficit[player_a] = max(
+            largest_deficit[player_a],
+            wins[player_b] - wins[player_a],
+        )
+        largest_deficit[player_b] = max(
+            largest_deficit[player_b],
+            wins[player_a] - wins[player_b],
+        )
+        leader = (
+            player_a
+            if wins[player_a] > wins[player_b]
+            else player_b
+            if wins[player_b] > wins[player_a]
+            else None
+        )
+        if (
+            leader is not None
+            and previous_leader is not None
+            and leader != previous_leader
+        ):
+            lead_changes += 1
+        if leader is not None:
+            previous_leader = leader
+
+    final_leader = (
+        player_a
+        if wins[player_a] > wins[player_b]
+        else player_b
+        if wins[player_b] > wins[player_a]
+        else None
+    )
+    if final_leader and largest_deficit[final_leader] >= 2:
+        return (
+            f"The series has changed direction over time: {final_leader} "
+            f"once trailed by {largest_deficit[final_leader]} sets before "
+            f"moving in front."
+        )
+    if lead_changes >= 2:
+        return (
+            f"Control of the rivalry has changed hands {lead_changes} times, "
+            f"showing how often its direction has shifted."
+        )
+    return None
+
+
+def _rivalry_scoreline_sentence(
+    history: list[dict[str, Any]],
+) -> str | None:
+    """Summarize whether known set scores tend to be close or decisive."""
+
+    known_scores = []
+    for meeting in history:
+        score = meeting.get("score")
+        if not score or "-" not in str(score) or meeting.get("walkover"):
+            continue
+        left, right = str(score).split("-", 1)
+        try:
+            known_scores.append((int(left), int(right)))
+        except ValueError:
+            continue
+
+    if len(known_scores) < 4:
+        return None
+
+    full_distance = sum(
+        abs(left - right) == 1 and max(left, right) in {2, 3}
+        for left, right in known_scores
+    )
+    sweeps = sum(min(left, right) == 0 for left, right in known_scores)
+
+    if full_distance / len(known_scores) >= 0.5:
+        return (
+            f"The scorelines underline that competitiveness: "
+            f"{full_distance} of {len(known_scores)} recorded sets went "
+            f"the full distance."
+        )
+    if sweeps / len(known_scores) >= 0.5:
+        return (
+            f"The individual meetings have often been decisive, with "
+            f"{sweeps} sweeps across {len(known_scores)} known scores."
+        )
+    return (
+        f"Across {len(known_scores)} known scores, the rivalry has mixed "
+        f"close contests with more decisive results."
+    )
+
+
+def _rivalry_stage_sentence(
+    history: list[dict[str, Any]],
+    player_a: str,
+    player_b: str,
+) -> str | None:
+    """Describe a meaningful split between Group and Bracket results."""
+
+    group = {player_a: 0, player_b: 0}
+    bracket = {player_a: 0, player_b: 0}
+    for meeting in history:
+        target = (
+            group
+            if str(meeting.get("stage") or "") in {"group", "group_stage"}
+            else bracket
+        )
+        target[str(meeting["winner"])] += 1
+
+    if sum(group.values()) < 2 or sum(bracket.values()) < 2:
+        return None
+    group_leader = max(group, key=group.get)
+    bracket_leader = max(bracket, key=bracket.get)
+    if group[group_leader] == group[player_b if group_leader == player_a else player_a]:
+        return None
+    if bracket[bracket_leader] == bracket[player_b if bracket_leader == player_a else player_a]:
+        return None
+    if group_leader != bracket_leader:
+        return (
+            f"Tournament stage has mattered: {group_leader} leads the Group "
+            f"Stage meetings {group[group_leader]}–{min(group.values())}, "
+            f"while {bracket_leader} leads in the Bracket "
+            f"{bracket[bracket_leader]}–{min(bracket.values())}."
+        )
+    return None
+
+
+def _rivalry_revenge_sentence(
+    history: list[dict[str, Any]],
+) -> str | None:
+    """Find the latest same-tournament rematch won by the earlier loser."""
+
+    by_tournament: dict[str, list[dict[str, Any]]] = {}
+    for meeting in history:
+        tournament = str(meeting.get("tournament") or "")
+        if tournament:
+            by_tournament.setdefault(tournament, []).append(meeting)
+
+    for tournament, meetings in reversed(list(by_tournament.items())):
+        if len(meetings) >= 2:
+            first_winner = meetings[0].get("winner")
+            last_winner = meetings[-1].get("winner")
+            if first_winner and last_winner and first_winner != last_winner:
+                return (
+                    f"At {tournament}, {last_winner} avenged an earlier loss "
+                    f"by winning the rematch later in the event."
+                )
+    return None
+
+
+def _select_rivalry_sentences(sentences: list[str]) -> list[str]:
+    """Select the strongest rivalry angles and retain narrative order."""
+
+    if len(sentences) <= 8:
+        return sentences
+
+    priorities = {
+        "Most recently": 100,
+        "changed direction": 95,
+        "changed hands": 90,
+        "Recent momentum": 90,
+        "Recent results": 90,
+        "avenged an earlier loss": 85,
+        "Tournament stage has mattered": 80,
+        "scorelines": 75,
+        "individual meetings": 75,
+        "known scores": 70,
+        "longest streak": 65,
+        "game record": 60,
+        "decided sets": 50,
+    }
+    ranked = sorted(
+        enumerate(sentences[1:], start=1),
+        key=lambda item: max(
+            (
+                score
+                for phrase, score in priorities.items()
+                if phrase in item[1]
+            ),
+            default=40,
+        ),
+        reverse=True,
+    )[:7]
+    selected_indexes = {0, *(index for index, _ in ranked)}
+    return [
+        sentence
+        for index, sentence in enumerate(sentences)
+        if index in selected_indexes
+    ]
+
+
 def _overall_summary(
     player_a: str,
     player_b: str,
@@ -50,10 +359,17 @@ def _overall_summary(
 ) -> str:
     """Builds the all-time head-to-head sentence."""
 
+    seed = f"{player_a}|{player_b}|overall"
+
     if wins_a == wins_b:
-        return (
+        return _stable_variant(
+            seed,
             f"The all-time series between {player_a} and {player_b} "
-            f"is tied at {wins_a}–{wins_b}."
+            f"is tied at {wins_a}–{wins_b}.",
+            f"Nothing separates {player_a} and {player_b} in the set "
+            f"record, which stands at {wins_a}–{wins_b}.",
+            f"After their recorded meetings, {player_a} and {player_b} "
+            f"remain level at {wins_a}–{wins_b}.",
         )
 
     if wins_a > wins_b:
@@ -70,14 +386,24 @@ def _overall_summary(
     margin = leader_wins - trailer_wins
 
     if margin == 1:
-        return (
+        return _stable_variant(
+            seed,
             f"{leader} narrowly leads the all-time series against {trailer} "
-            f"{leader_wins}–{trailer_wins}."
+            f"{leader_wins}–{trailer_wins}.",
+            f"Only one set separates the two players, with {leader} ahead "
+            f"of {trailer} {leader_wins}–{trailer_wins}.",
+            f"The head-to-head remains finely balanced, although {leader} "
+            f"holds a {leader_wins}–{trailer_wins} edge over {trailer}.",
         )
 
-    return (
+    return _stable_variant(
+        seed,
         f"{leader} leads the all-time series against {trailer} "
-        f"{leader_wins}–{trailer_wins}."
+        f"{leader_wins}–{trailer_wins}.",
+        f"The historical advantage belongs to {leader}, who holds a "
+        f"{leader_wins}–{trailer_wins} record against {trailer}.",
+        f"Across all recorded sets, {leader} has built a "
+        f"{leader_wins}–{trailer_wins} lead over {trailer}.",
     )
 
 
@@ -97,69 +423,219 @@ def generate_rivalry_summary(h2h: dict[str, Any]) -> str:
     history = _decided_history(h2h)
 
     if not history:
-        return f"{player_a} and {player_b} have not faced each other yet."
+        return _stable_variant(
+            f"{player_a}|{player_b}|unplayed",
+            f"{player_a} and {player_b} have not faced each other yet.",
+            f"There is no recorded set between {player_a} and {player_b} yet.",
+        )
 
     if len(history) == 1:
         winner = str(history[0]["winner"])
-        return (
+        return _stable_variant(
+            f"{player_a}|{player_b}|single",
             f"{player_a} and {player_b} have faced each other only once, "
-            f"with {winner} taking the win."
+            f"with {winner} winning the set.",
+            f"The rivalry currently consists of a single set, won by "
+            f"{winner}.",
         )
 
-    overall = _overall_summary(
-        player_a,
-        player_b,
-        wins_a,
-        wins_b,
-    )
+    sentences = [
+        _overall_summary(
+            player_a,
+            player_b,
+            wins_a,
+            wins_b,
+        )
+    ]
+
+    decided_sets = wins_a + wins_b
+    set_margin = abs(wins_a - wins_b)
+    set_leader = None
+    if wins_a > wins_b:
+        set_leader = player_a
+    elif wins_b > wins_a:
+        set_leader = player_b
+
+    if decided_sets >= 6:
+        if set_margin <= 2:
+            sentences.append(
+                _stable_variant(
+                    f"{player_a}|{player_b}|balanced",
+                    f"Even after {decided_sets} decided sets, neither player "
+                    f"has been able to create lasting separation.",
+                    f"The rivalry has stayed competitive across "
+                    f"{decided_sets} decided sets, with every advantage "
+                    f"remaining vulnerable.",
+                    f"Over {decided_sets} decided sets, the matchup has "
+                    f"consistently resisted a clear long-term favourite.",
+                )
+            )
+        elif set_leader is not None and max(wins_a, wins_b) / decided_sets >= 0.7:
+            sentences.append(
+                f"Across {decided_sets} decided sets, {set_leader} has "
+                f"established clear control of the matchup."
+            )
+        else:
+            sentences.append(
+                f"The {decided_sets} recorded meetings have produced a "
+                f"competitive rivalry despite the current gap."
+            )
+
+    for storyline in (
+        _rivalry_trajectory_sentence(history, player_a, player_b),
+        _rivalry_stage_sentence(history, player_a, player_b),
+        _rivalry_scoreline_sentence(history),
+    ):
+        if storyline:
+            sentences.append(storyline)
+
+    games_a = int(h2h["player_a"].get("games_won", 0))
+    games_b = int(h2h["player_b"].get("games_won", 0))
+    known_scores = int(h2h.get("matches_with_known_score", 0))
+    if known_scores >= 3 and games_a + games_b > 0:
+        game_margin = abs(games_a - games_b)
+        game_leader = None
+        if games_a > games_b:
+            game_leader = player_a
+        elif games_b > games_a:
+            game_leader = player_b
+
+        if game_margin <= max(2, round((games_a + games_b) * 0.1)):
+            sentences.append(
+                f"That balance is reflected in a game record of "
+                f"{games_a}–{games_b} from {player_a}'s perspective."
+            )
+        else:
+            leader_games = max(games_a, games_b)
+            trailer_games = min(games_a, games_b)
+            if game_leader == set_leader:
+                sentences.append(
+                    f"The game record reinforces that advantage, with "
+                    f"{game_leader} ahead {leader_games}–{trailer_games}."
+                )
+            else:
+                sentences.append(
+                    f"The game record tells a different story: "
+                    f"{game_leader} leads {leader_games}–{trailer_games} "
+                    f"despite trailing in sets."
+                )
 
     streak_winner, streak_length = _current_streak(history)
-    if streak_winner is not None and streak_length >= 3:
-        return (
-            f"{overall} {streak_winner} has won the last "
-            f"{streak_length} sets."
-        )
-
-    recent_matches = history[-5:]
-    if len(recent_matches) == 5:
-        recent_wins_a = sum(
-            match["winner"] == player_a
-            for match in recent_matches
-        )
-        recent_wins_b = sum(
-            match["winner"] == player_b
-            for match in recent_matches
-        )
-
-        if recent_wins_a >= 4:
-            recent_leader = player_a
-            recent_wins = recent_wins_a
-        elif recent_wins_b >= 4:
-            recent_leader = player_b
-            recent_wins = recent_wins_b
+    longest_streaks = {player_a: 0, player_b: 0}
+    running_winner: str | None = None
+    running_length = 0
+    for meeting in history:
+        winner = str(meeting["winner"])
+        if winner == running_winner:
+            running_length += 1
         else:
-            recent_leader = None
-            recent_wins = 0
+            running_winner = winner
+            running_length = 1
+        longest_streaks[winner] = max(
+            longest_streaks[winner],
+            running_length,
+        )
+    historical_streak_leader = max(
+        longest_streaks,
+        key=longest_streaks.get,
+    )
+    historical_streak = longest_streaks[historical_streak_leader]
+    if historical_streak >= 3 and historical_streak > streak_length:
+        sentences.append(
+            f"The longest streak in the rivalry belongs to "
+            f"{historical_streak_leader}, who once won "
+            f"{historical_streak} consecutive sets."
+        )
 
-        if recent_leader is not None:
-            all_time_leader = None
-            if wins_a > wins_b:
-                all_time_leader = player_a
-            elif wins_b > wins_a:
-                all_time_leader = player_b
-
-            connector = (
-                "However, "
-                if all_time_leader is not None
-                and recent_leader != all_time_leader
-                else ""
+    recent_leader = None
+    if streak_winner is not None and streak_length >= 2:
+        recent_leader = streak_winner
+        sentences.append(
+            _stable_variant(
+                f"{player_a}|{player_b}|momentum",
+                f"Recent momentum belongs to {streak_winner}, who has won "
+                f"the last {streak_length} sets.",
+                f"Recent momentum has moved toward {streak_winner} after "
+                f"{streak_length} consecutive set wins.",
+                f"Recent momentum now favours {streak_winner}, currently "
+                f"on a {streak_length}-set run in this matchup.",
             )
-            return (
-                f"{overall} {connector}{recent_leader} has won "
-                f"{recent_wins} of the last five sets."
+        )
+    else:
+        recent_matches = history[-5:]
+        if len(recent_matches) == 5:
+            recent_wins_a = sum(
+                match["winner"] == player_a
+                for match in recent_matches
+            )
+            recent_wins_b = sum(
+                match["winner"] == player_b
+                for match in recent_matches
             )
 
-    return overall
+            if recent_wins_a >= 4:
+                recent_leader = player_a
+                recent_wins = recent_wins_a
+            elif recent_wins_b >= 4:
+                recent_leader = player_b
+                recent_wins = recent_wins_b
+            else:
+                recent_wins = 0
+
+            if recent_leader is not None:
+                transition = (
+                    "Recent results have shifted the picture, with"
+                    if set_leader is not None and recent_leader != set_leader
+                    else "Recent form also favours"
+                )
+                sentences.append(
+                    f"{transition} {recent_leader} winning "
+                    f"{recent_wins} of the last five sets."
+                )
+
+    revenge_storyline = _rivalry_revenge_sentence(history)
+    if revenge_storyline:
+        sentences.append(revenge_storyline)
+
+    last_match = h2h.get("last_match")
+    if last_match and last_match.get("winner"):
+        last_winner = str(last_match["winner"])
+        last_score = last_match.get("score")
+        if last_score and "-" in str(last_score):
+            score_a, score_b = str(last_score).split("-", 1)
+            if last_winner == player_b:
+                last_score = f"{score_b}–{score_a}"
+            else:
+                last_score = f"{score_a}–{score_b}"
+        score_text = f" {last_score}" if last_score else ""
+        tournament = str(
+            last_match.get("tournament") or "their latest meeting"
+        )
+        sentences.append(
+            _stable_variant(
+                f"{player_a}|{player_b}|latest",
+                f"Most recently, {last_winner} won{score_text} at "
+                f"{tournament}.",
+                f"Most recently, their meeting at {tournament} ended with "
+                f"a {last_winner}{score_text} victory.",
+                f"Most recently, {last_winner} took the set at {tournament}"
+                f"{f' by {last_score}' if last_score else ''}.",
+            )
+        )
+
+    if recent_leader is not None and set_leader is not None:
+        if recent_leader != set_leader:
+            sentences.append(
+                f"That recent swing runs against the longer-term record "
+                f"and has added a new layer to the rivalry."
+            )
+        elif set_margin <= 2:
+            sentences.append(
+                f"With the historical margin still narrow, that run gives "
+                f"{recent_leader} the clearest current advantage."
+            )
+
+    return " ".join(_select_rivalry_sentences(sentences))
 
 
 def generate_player_summary(
@@ -179,6 +655,7 @@ def generate_player_summary(
     best_result = profile.get("best_result")
 
     nemesis = insights.get("nemesis")
+    featured_rivalry = insights.get("featured_rivalry")
     longest_win_streak = int(
         insights.get("longest_win_streak", 0)
     )
@@ -192,10 +669,15 @@ def generate_player_summary(
 
     # Career introduction
     if appearances <= 1 and titles == 0:
-        opening = (
-            f"{player} has made {appearances} recorded tournament "
-            f"{appearance_word} so far."
-        )
+        if appearances == 0:
+            opening = (
+                f"{player} has no recorded tournament appearances yet."
+            )
+        else:
+            opening = (
+                f"{player} has made one recorded tournament appearance "
+                f"so far."
+            )
     elif titles == 0:
         opening = (
             f"{player} has appeared in {appearances} tournaments "
@@ -247,54 +729,68 @@ def generate_player_summary(
     else:
         performance += "."
 
-    # Select one personal storyline.
-    storyline: str | None = None
+    sentences = [opening, performance]
 
-    if longest_win_streak >= 4:
-        storyline = (
+    if peak_elo <= current_elo + 0.05:
+        sentences.append(
+            "Their current rating also matches their career-high Elo."
+        )
+    else:
+        peak_gap = peak_elo - current_elo
+        sentences.append(
+            f"Their career-high Elo is {peak_elo:.1f}, "
+            f"which is {peak_gap:.1f} points above their current rating."
+        )
+
+    if titles == 0 and best_result is not None:
+        placement = int(best_result)
+        sentences.append(
+            f"Their best tournament finish so far is "
+            f"{_ordinal(placement)} place."
+        )
+
+    if longest_win_streak >= 3:
+        sentences.append(
             f"Their longest winning streak stands at "
             f"{longest_win_streak} sets."
         )
 
-    elif (
+    opponent_storyline: str | None = None
+    if (
         nemesis
         and int(nemesis.get("matches", 0)) >= 3
-        and float(nemesis.get("winrate", 100.0)) < 50.0
+        and float(nemesis.get("winrate", 100.0)) < 35.0
     ):
-        storyline = (
+        opponent_storyline = (
             f"Their toughest recorded opponent has been "
             f"{nemesis['opponent']}, against whom they hold a "
             f"{nemesis['wins']}–{nemesis['losses']} record."
         )
+    elif (
+        featured_rivalry
+        and int(featured_rivalry.get("matches", 0)) >= 3
+    ):
+        opponent_storyline = (
+            f"Their most established rivalry is with "
+            f"{featured_rivalry['opponent']}, with a "
+            f"{featured_rivalry['wins']}–{featured_rivalry['losses']} "
+            f"record across {featured_rivalry['matches']} sets."
+        )
 
-    elif best_elo_event:
+    if opponent_storyline:
+        sentences.append(opponent_storyline)
+
+    if best_elo_event:
         tournament = best_elo_event.get("tournament")
         change = float(best_elo_event.get("elo_change", 0.0))
 
         if tournament and change > 0:
-            storyline = (
+            sentences.append(
                 f"Their biggest Elo gain came at {tournament}, "
                 f"with an increase of {change:.1f} points."
             )
 
-    if storyline is None and peak_elo > current_elo:
-        storyline = (
-            f"Their career-high Elo rating is {peak_elo:.1f}."
-        )
-
-    if storyline is None and best_result is not None:
-        placement = int(best_result)
-        storyline = (
-            f"Their best tournament finish is "
-            f"{_ordinal(placement)} place."
-        )
-
-    sentences = [opening, performance]
-
-    if storyline:
-        sentences.append(storyline)
-
-    return " ".join(sentences)
+    return " ".join(sentences[:6])
 
 def _find_final_match(
     matches: list[dict[str, Any]],
@@ -489,12 +985,14 @@ def generate_tournament_summary(
     winner_title_number: int | None = None,
     defending_champion: str | None = None,
     milestones: list[str] | None = None,
+    story_context: dict[str, Any] | None = None,
 ) -> str:
     """Generates a rule-based recap for one tournament."""
 
     tournament_number = int(tournament["tournament_number"])
     tournament_name = f"WC {tournament_number:02d}"
     winner = str(tournament.get("winner") or "An unknown player")
+    story_context = story_context or {}
 
     podium = {
         int(row["placement"]): str(row["player"])
@@ -542,21 +1040,172 @@ def generate_tournament_summary(
             f"{_ordinal(winner_title_number)} World Championship title."
         )
 
+    title_streak = int(story_context.get("winner_title_streak") or 0)
+    previous_title = story_context.get("previous_title")
+    if title_streak >= 2:
+        sentences.append(
+            f"It was {winner}'s {_ordinal(title_streak)} consecutive "
+            f"championship."
+        )
+    elif (
+        winner_title_number
+        and winner_title_number > 1
+        and previous_title
+        and int(previous_title["tournament_number"]) < tournament_number - 1
+    ):
+        previous_title_name = (
+            f"WC {int(previous_title['tournament_number']):02d}"
+        )
+        sentences.append(
+            f"It was {winner}'s first title since {previous_title_name}, "
+            f"ending a run of tournaments without a championship."
+        )
+
+    winner_previous_placement = story_context.get(
+        "winner_previous_placement"
+    )
+    if (
+        winner_previous_placement
+        and winner_previous_placement.get("placement") is not None
+        and int(winner_previous_placement["placement"]) > 1
+    ):
+        previous_number = int(
+            winner_previous_placement["tournament_number"]
+        )
+        previous_placement = int(winner_previous_placement["placement"])
+        sentences.append(
+            f"The win completed a rise from {_ordinal(previous_placement)} "
+            f"place at {f'WC {previous_number:02d}'}, {winner}'s previous "
+            f"appearance."
+        )
+
+    podium_streak = int(story_context.get("winner_podium_streak") or 0)
+    if podium_streak >= 3:
+        sentences.append(
+            f"The result also extended {winner}'s podium streak to "
+            f"{podium_streak} consecutive appearances."
+        )
+
+    repeat_final = story_context.get("repeat_final")
+    if repeat_final and runner_up:
+        previous_final_name = (
+            f"WC {int(repeat_final['previous_tournament']):02d}"
+        )
+        if str(repeat_final.get("previous_winner")) == winner:
+            sentences.append(
+                f"The same finalists had met at {previous_final_name}, and "
+                f"{winner} prevailed again in the rematch."
+            )
+        else:
+            sentences.append(
+                f"The same finalists had met at {previous_final_name}, but "
+                f"this time {winner} reversed the outcome."
+            )
+
+    defending_result = story_context.get("defending_champion_result")
+    if (
+        defending_champion
+        and defending_champion != winner
+        and defending_result
+        and defending_result.get("placement") is not None
+    ):
+        sentences.append(
+            f"Defending champion {defending_champion}'s title defence ended "
+            f"in {_ordinal(int(defending_result['placement']))} place."
+        )
+
     # Main tournament performance
     wins_leader, wins_total = _most_match_wins(matches)
 
     if wins_leader and wins_total:
+        win_label = "set win" if wins_total == 1 else "set wins"
         if wins_leader == winner:
             sentences.append(
-                f"The champion also recorded the most set wins "
-                f"with {wins_total}."
+                f"The champion also led the field with "
+                f"{wins_total} {win_label}."
             )
         else:
             sentences.append(
-                f"{wins_leader} recorded the most set wins "
-                f"with {wins_total}."
+                f"{wins_leader} led the field with "
+                f"{wins_total} {win_label}."
             )
 
+    group_matches = [
+        match
+        for match in matches
+        if str(match.get("stage") or "") in {"group", "group_stage"}
+        and match.get("winner")
+    ]
+    if group_matches:
+        group_records: dict[str, list[int]] = {}
+        for match in group_matches:
+            player_1 = str(match.get("player_1") or "")
+            player_2 = str(match.get("player_2") or "")
+            match_winner = str(match["winner"])
+            for player_name in (player_1, player_2):
+                if not player_name:
+                    continue
+                record = group_records.setdefault(player_name, [0, 0])
+                if player_name == match_winner:
+                    record[0] += 1
+                else:
+                    record[1] += 1
+        unbeaten = [
+            (player_name, record[0])
+            for player_name, record in group_records.items()
+            if record[0] >= 2 and record[1] == 0
+        ]
+        if unbeaten:
+            unbeaten_player, unbeaten_wins = max(
+                unbeaten,
+                key=lambda item: (
+                    item[0] == winner,
+                    item[1],
+                ),
+            )
+            sentences.append(
+                f"{unbeaten_player} completed the Group Stage unbeaten "
+                f"with a {unbeaten_wins}–0 set record."
+            )
+
+    seed_performances = []
+    for participant in participants:
+        seed = participant.get("seed")
+        placement = participant.get("placement")
+        if seed is None or placement is None:
+            continue
+        improvement = int(seed) - int(placement)
+        if improvement >= 2:
+            seed_performances.append(
+                (
+                    improvement,
+                    str(participant["player"]),
+                    int(seed),
+                    int(placement),
+                )
+            )
+    if seed_performances:
+        improvement, player_name, seed, placement = max(seed_performances)
+        sentences.append(
+            f"{player_name} produced the strongest result relative to the "
+            f"initial seed, climbing from #{seed} to "
+            f"{_ordinal(placement)} place."
+        )
+
+    biggest_improvement = story_context.get("biggest_placement_improvement")
+    if (
+        biggest_improvement
+        and str(biggest_improvement.get("player")) != winner
+    ):
+        improved_player = str(biggest_improvement["player"])
+        previous_number = int(biggest_improvement["previous_tournament"])
+        previous_placement = int(biggest_improvement["previous_placement"])
+        current_placement = int(biggest_improvement["current_placement"])
+        sentences.append(
+            f"{improved_player} made the largest jump from a previous "
+            f"appearance, improving from {_ordinal(previous_placement)} at "
+            f"WC {previous_number:02d} to {_ordinal(current_placement)}."
+        )
     # Elo and upset storylines
     if elo_changes:
         biggest_gain = max(
@@ -573,14 +1222,14 @@ def generate_tournament_summary(
 
         if gain > 0:
             elo_sentence = (
-                f"{biggest_gain['Players']} made the biggest Elo gain "
-                f"at {gain:+.1f}"
+                f"{biggest_gain['Players']} made the biggest Elo gain, "
+                f"adding {gain:.1f} points"
             )
 
             if loss < 0:
                 elo_sentence += (
                     f", while {biggest_loss['Players']} had the largest "
-                    f"drop at {loss:+.1f}."
+                    f"drop at {abs(loss):.1f} points."
                 )
             else:
                 elo_sentence += "."
@@ -601,28 +1250,27 @@ def generate_tournament_summary(
     close_sets = _count_close_sets(matches)
     participant_count = len(participants)
     match_count = len(matches)
+    recorded_set_label = "set" if match_count == 1 else "sets"
 
-    context_parts = [
+    context_sentence = (
         f"{participant_count} players competed across "
-        f"{match_count} recorded sets"
-    ]
+        f"{match_count} recorded {recorded_set_label}"
+    )
 
     if close_sets:
         set_word = "set" if close_sets == 1 else "sets"
-        context_parts.append(
-            f"{close_sets} {set_word} decided by a single game"
+        verb = "was" if close_sets == 1 else "were"
+        context_sentence += (
+            f"; {close_sets} {set_word} {verb} decided by a single game"
         )
 
     if third_place:
-        context_parts.append(f"{third_place} finishing third")
+        connector = ", while" if close_sets else ";"
+        context_sentence += f"{connector} {third_place} finished third"
 
-    context_sentence = ", with ".join(context_parts) + "."
-    sentences.append(context_sentence)
+    sentences.append(context_sentence + ".")
 
     selected_milestone = _select_milestone(milestones)
-
-    selected_sentences = sentences[:3]
-
     if selected_milestone:
         # Avoid repeating the title milestone when the recap already contains
         # a dedicated title sentence.
@@ -630,22 +1278,14 @@ def generate_tournament_summary(
             "World Championship title" in selected_milestone
             and any(
                 "World Championship title" in sentence
-                for sentence in selected_sentences
+                for sentence in sentences
             )
         )
 
         if not title_already_mentioned:
-            selected_sentences.append(selected_milestone)
+            sentences.append(selected_milestone)
 
-    if len(selected_sentences) < 4:
-        for sentence in sentences[3:]:
-            if sentence not in selected_sentences:
-                selected_sentences.append(sentence)
-
-            if len(selected_sentences) == 4:
-                break
-
-    return " ".join(selected_sentences)
+    return " ".join(_select_tournament_sentences(sentences))
 
 def generate_tournament_preview(
     preview_data: dict[str, Any],
@@ -784,7 +1424,7 @@ def generate_tournament_preview(
 
         if best_form_name == leader_name:
             sentences.append(
-                f"The favourite also carries the strongest recent set record, "
+                f"{leader_name} also carries the strongest recent set record, "
                 f"winning {best_form_wins} of the last "
                 f"{best_form_matches} recorded sets."
             )
@@ -863,6 +1503,23 @@ def generate_tournament_preview(
             )
             break
 
+    active_winning_streaks = [
+        row
+        for row in recent_form
+        if row.get("streak_type") == "win"
+        and int(row.get("streak", 0)) >= 3
+    ]
+    if active_winning_streaks:
+        streak_leader = max(
+            active_winning_streaks,
+            key=lambda row: int(row["streak"]),
+        )
+        sentences.append(
+            f"{streak_leader['player']} carries the longest active winning "
+            f"streak into the tournament at "
+            f"{int(streak_leader['streak'])} sets."
+        )
+
     if featured_rivalry:
         player_a = str(featured_rivalry["player_a"])
         player_b = str(featured_rivalry["player_b"])
@@ -887,6 +1544,19 @@ def generate_tournament_preview(
                 f"{wins_b}–{wins_a}."
             )
 
+        last_match = featured_rivalry.get("last_match")
+        if last_match and last_match.get("winner"):
+            last_winner = str(last_match["winner"])
+            last_tournament = str(
+                last_match.get("tournament") or "their previous meeting"
+            )
+            last_score = last_match.get("score")
+            score_text = f" {last_score}" if last_score else ""
+            sentences.append(
+                f"Their latest meeting came at {last_tournament}, where "
+                f"{last_winner} won{score_text}."
+            )
+
     if len(ranking) >= 3:
         top_three_gap = (
             float(ranking[0]["elo"])
@@ -904,4 +1574,4 @@ def generate_tournament_preview(
                 "the gap to the current frontrunners."
             )
 
-    return " ".join(sentences)
+    return " ".join(_select_preview_sentences(sentences))
