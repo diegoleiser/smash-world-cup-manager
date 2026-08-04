@@ -21,6 +21,7 @@ from dashboard_pages.navigation_routes import (  # noqa: E402
     player_profile_url,
     tournament_archive_url,
 )
+from dashboard_pages.player import _player_selector_styles  # noqa: E402
 from dashboard_pages.tournament_control_center import (  # noqa: E402
     group_ready_matches,
 )
@@ -121,6 +122,14 @@ class MatchupsPageBoundaryTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             tournament_archive_url(0)
+
+    def test_player_selector_uses_archived_selector_card_language(self) -> None:
+        styles = _player_selector_styles()
+
+        self.assertIn("st-key-player_profile_selector", styles)
+        self.assertIn("border-radius: 0.8rem", styles)
+        self.assertIn(":focus-within", styles)
+        self.assertIn("background-color: transparent", styles)
 
     def test_dashboard_uses_official_page_navigation(self) -> None:
         dashboard_source = (PROJECT_ROOT / "dashboard.py").read_text()
@@ -352,6 +361,100 @@ class TournamentControlCenterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             internal_dashboard_link("Unsafe", "https://example.com")
 
+    def test_dashboard_table_supports_opt_in_mobile_cards(self) -> None:
+        markup = dashboard_table_html(
+            ["Player", "Elo"],
+            [["Tamira", "1234.5"], ["Gianni", "1200.0"]],
+            columns="2fr 1fr",
+            emphasis_column=0,
+            mobile_cards=True,
+            mobile_visible_rows=1,
+            mobile_summary="Show full ranking",
+            mobile_card_variant="ranking",
+        )
+
+        self.assertIn("control-table-mobile-cards", markup)
+        self.assertIn('data-label="Player"', markup)
+        self.assertIn('data-label="Elo"', markup)
+        self.assertIn("grid-column: 1 / -1", markup)
+        self.assertIn("control-table-mobile-collapsed", markup)
+        self.assertIn("Show full ranking", markup)
+        self.assertIn("Show less", markup)
+        self.assertIn("control-table-mobile-more", markup)
+        self.assertIn("control-table-mobile-ranking", markup)
+        self.assertIn("order: 2", markup)
+
+        with self.assertRaises(ValueError):
+            dashboard_table_html(
+                ["Player"],
+                [["Tamira"]],
+                columns="1fr",
+                mobile_cards=True,
+                mobile_visible_rows=0,
+            )
+
+        with self.assertRaises(ValueError):
+            dashboard_table_html(
+                ["Player"],
+                [["Tamira"]],
+                columns="1fr",
+                mobile_cards=True,
+                mobile_card_variant="unknown",
+            )
+
+        tournament_markup = dashboard_table_html(
+            ["Tournament", "Date", "Champion", "Players"],
+            [["WC 13", "28 Feb 2026", "Tamira", "7"]],
+            columns="repeat(4, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="tournament",
+        )
+        titles_markup = dashboard_table_html(
+            ["Rank", "Player", "Titles"],
+            [["#1", "Gianni", "5 Titles"]],
+            columns="repeat(3, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="titles",
+        )
+        self.assertIn("control-table-mobile-tournament", tournament_markup)
+        self.assertIn("control-table-mobile-titles", titles_markup)
+
+        history_markup = dashboard_table_html(
+            ["Tournament", "Date", "Round", "Winner", "Result"],
+            [["WC 13", "28 Feb 2026", "Group Round 3", "Diego", "1–2"]],
+            columns="repeat(5, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="match-history",
+        )
+        self.assertIn("control-table-mobile-match-history", history_markup)
+
+        standings_markup = dashboard_table_html(
+            ["Rank", "Player", "Set Record", "Game Record"],
+            [["#1", "Tamira", "5–1", "11–2"]],
+            columns="repeat(4, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="standings",
+        )
+        match_markup = dashboard_table_html(
+            ["Round", "Set", "Result", "Winner"],
+            [["3", "Diego vs Tamira", "1–2", "Tamira"]],
+            columns="repeat(4, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="tournament-match",
+        )
+        self.assertIn("control-table-mobile-standings", standings_markup)
+        self.assertIn("control-table-mobile-tournament-match", match_markup)
+
+        for variant in ("final-standings", "elo-change", "elo-ranking"):
+            markup = dashboard_table_html(
+                ["Player"],
+                [["Tamira"]],
+                columns="1fr",
+                mobile_cards=True,
+                mobile_card_variant=variant,
+            )
+            self.assertIn(f"control-table-mobile-{variant}", markup)
+
     def test_clickable_card_styles_use_shared_hover_language(self) -> None:
         styles = clickable_card_button_styles("example_card_")
 
@@ -465,7 +568,7 @@ class TournamentPageTests(unittest.TestCase):
         self.assertIn("WC 08", markup)
         self.assertIn("2026-07-31", markup)
         self.assertIn("4 Participants", markup)
-        self.assertIn("14 Matches", markup)
+        self.assertIn("14 Sets", markup)
         self.assertIn("Champion", markup)
         self.assertIn("archive-tournament-desktop-meta", markup)
         self.assertIn("display: none", markup)
@@ -565,8 +668,8 @@ class TournamentPageTests(unittest.TestCase):
         self.assertEqual(
             tables[0]["rows"],
             [
-                ["#1", "Alpha", "1–0", "2–0", "▲ +2"],
-                ["#2", "Beta", "0–1", "0–2", "▼ -2"],
+                ["#1", "Alpha", "1–0", "2–0"],
+                ["#2", "Beta", "0–1", "0–2"],
             ],
         )
         self.assertEqual(tables[0]["highlights"], {0: "winners"})

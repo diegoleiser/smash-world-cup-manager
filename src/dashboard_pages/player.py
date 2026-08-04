@@ -27,6 +27,61 @@ def player_initials(name: str) -> str:
         return parts[0][:2].upper()
     return f"{parts[0][0]}{parts[-1][0]}".upper()
 
+
+def _player_selector_styles() -> str:
+    """Return the shared card language for the player selector."""
+
+    return """
+    <style>
+    div[class*="st-key-player_profile_selector"] {
+        margin-bottom: 0.85rem;
+        padding: 0.55rem 0.85rem 0.75rem;
+        border: 1px solid rgba(128, 128, 128, 0.30);
+        border-radius: 0.8rem;
+        background: rgba(255, 255, 255, 0.018);
+        transition:
+            border-color 0.15s ease,
+            background-color 0.15s ease,
+            box-shadow 0.15s ease;
+    }
+    div[class*="st-key-player_profile_selector"]:hover {
+        border-color: rgba(128, 128, 128, 0.48);
+        background: rgba(128, 128, 128, 0.035);
+    }
+    div[class*="st-key-player_profile_selector"]:focus-within {
+        border-color: var(--primary-color, rgb(255, 75, 75));
+        box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.18);
+    }
+    div[class*="st-key-player_profile_selector"] label p {
+        color: rgba(250, 250, 250, 0.72);
+        font-size: 0.82rem !important;
+        font-weight: 750 !important;
+    }
+    div[class*="st-key-player_profile_selector"]
+    [data-baseweb="select"] > div {
+        min-height: 3.65rem !important;
+        border: none !important;
+        border-radius: 0.55rem !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+    }
+    div[class*="st-key-player_profile_selector"]
+    [role="combobox"],
+    div[class*="st-key-player_profile_selector"]
+    [role="combobox"] *,
+    div[class*="st-key-player_profile_selector"]
+    [aria-haspopup="listbox"],
+    div[class*="st-key-player_profile_selector"]
+    [aria-haspopup="listbox"] *,
+    div[class*="st-key-player_profile_selector"]
+    [data-baseweb="select"] * {
+        font-size: 1.4rem !important;
+        font-weight: 800 !important;
+        line-height: 1.2 !important;
+    }
+    </style>
+    """
+
 def render_player_page(
     include_inactive: bool,
     *,
@@ -128,47 +183,14 @@ def render_player_page(
 
 
 
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stSelectbox"] {
-            margin-bottom:0.25rem;
-        }
-
-        div[data-testid="stSelectbox"] label {
-            font-size:0.95rem;
-            font-weight:800;
-            letter-spacing:0.02em;
-            opacity:0.88;
-            margin-bottom:0.45rem;
-        }
-
-        div[data-testid="stSelectbox"]
-        div[data-baseweb="select"] > div {
-            min-height:3.7rem;
-            border-radius:0.7rem;
-            border-color:rgba(128,128,128,0.34);
-            background:rgba(128,128,128,0.07);
-            font-size:1.1rem;
-            font-weight:750;
-        }
-
-        div[data-testid="stSelectbox"]
-        div[data-baseweb="select"] > div:hover {
-            border-color:rgba(128,128,128,0.48);
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-    selected_name = st.selectbox(
-        "Select player",
-        options=player_names,
-        key="selected_player_name",
-        on_change=update_selected_player_url,
-    )
+    st.markdown(_player_selector_styles(), unsafe_allow_html=True)
+    with st.container(key="player_profile_selector"):
+        selected_name = st.selectbox(
+            "Select player",
+            options=player_names,
+            key="selected_player_name",
+            on_change=update_selected_player_url,
+        )
 
     st.divider()
 
@@ -381,6 +403,10 @@ def render_player_page(
         "padding:0.4rem 0.5rem;"
         "}"
 
+        ".player-profile-current-label {"
+        "font-size:0.78rem;"
+        "}"
+
         "}"
 
         "</style>"
@@ -541,17 +567,17 @@ def render_player_page(
 
         "@media (max-width:520px) {"
 
-        ".career-overview-strip {"
-        "grid-template-columns:1fr;"
-        "}"
-
         ".career-overview-item {"
-        "border-left:none;"
-        "border-top:1px solid rgba(128,128,128,0.20);"
+        "min-height:6.5rem;"
+        "padding:0.85rem 0.7rem;"
         "}"
 
-        ".career-overview-item:first-child {"
-        "border-top:none;"
+        ".career-overview-label {"
+        "font-size:0.78rem;"
+        "}"
+
+        ".career-overview-detail {"
+        "font-size:0.8rem;"
         "}"
 
         "}"
@@ -930,6 +956,15 @@ def render_player_page(
         "border-top:1px solid rgba(128,128,128,0.22);"
         "}"
 
+        ".player-insight-label {"
+        "font-size:0.8rem;"
+        "}"
+
+        ".player-insight-detail,"
+        ".player-streak-description {"
+        "font-size:0.86rem;"
+        "}"
+
         "}"
 
         "</style>"
@@ -1009,11 +1044,34 @@ def render_player_page(
         unsafe_allow_html=True,
     )
 
-
-
-
-
-
+    st.markdown(
+        """
+        <style>
+        @media (max-width: 700px) {
+            div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
+                gap: 0.9rem;
+                overflow-x: auto;
+                scrollbar-width: none;
+            }
+            div[data-testid="stTabs"]
+            div[data-baseweb="tab-list"]::-webkit-scrollbar {
+                display: none;
+            }
+            div[data-testid="stTabs"] button[data-baseweb="tab"] {
+                flex: 0 0 auto;
+                padding-right: 0.1rem;
+                padding-left: 0.1rem;
+            }
+            div[data-testid="stTabs"] button[data-baseweb="tab"] p {
+                font-size: 0.84rem;
+                font-weight: 700;
+                white-space: nowrap;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     tab_elo, tab_rank, tab_history, tab_opponents = st.tabs(
         ["Elo History", "Ranking History", "Tournament History", "Opponent Records"]
@@ -2071,11 +2129,11 @@ def render_player_page(
                         "</div>"
 
                         "<div class='player-tournament-winner'>"
-                        "<div class='player-tournament-winner-label'>"
-                        "TOURNAMENT CHAMPION"
-                        "</div>"
                         "<div class='player-tournament-winner-name'>"
                         f"{tournament_winner_html}"
+                        "</div>"
+                        "<div class='player-tournament-winner-label'>"
+                        "TOURNAMENT CHAMPION"
                         "</div>"
                         "</div>"
 
@@ -2170,12 +2228,13 @@ def render_player_page(
                 "font-weight:700;"
                 "letter-spacing:0.04em;"
                 "opacity:0.52;"
+                "margin-top:0.18rem;"
                 "}"
 
                 ".player-tournament-winner-name {"
                 "font-size:0.98rem;"
                 "font-weight:750;"
-                "margin-top:0.18rem;"
+                "margin-top:0;"
                 "}"
 
                 "@media (max-width:1100px) {"
@@ -2199,10 +2258,10 @@ def render_player_page(
                 "@media (max-width:700px) {"
 
                 ".player-tournament-row {"
-                "grid-template-columns:repeat(4, minmax(0, 1fr));"
-                "gap:0.35rem;"
+                "grid-template-columns:1.25fr 0.85fr 0.8fr 1.1fr;"
+                "gap:0.45rem;"
                 "min-height:5rem;"
-                "padding:0.8rem 0.7rem;"
+                "padding:0.85rem 0.75rem;"
                 "}"
 
                 ".player-tournament-name {"
@@ -2210,7 +2269,7 @@ def render_player_page(
                 "}"
 
                 ".player-tournament-date {"
-                "font-size:0.76rem;"
+                "font-size:0.8rem;"
                 "}"
 
                 ".player-tournament-placement {"
@@ -2223,15 +2282,18 @@ def render_player_page(
                 "}"
 
                 ".player-tournament-record-label {"
-                "font-size:0.62rem;"
+                "font-size:0.68rem;"
                 "}"
 
                 ".player-tournament-winner-label {"
-                "display:none;"
+                "display:block;"
+                "font-size:0.62rem;"
+                "margin-top:0.15rem;"
                 "}"
 
                 ".player-tournament-winner-name {"
-                "font-size:0.92rem;"
+                "font-size:0.96rem;"
+                "margin-top:0;"
                 "white-space:nowrap;"
                 "overflow:hidden;"
                 "text-overflow:ellipsis;"

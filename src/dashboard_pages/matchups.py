@@ -387,10 +387,6 @@ def render_matchups(
     left_rank = ranks.get(left_id)
     right_rank = ranks.get(right_id)
 
-    header_left, header_score, header_right = st.columns(
-        [4, 3, 4]
-    )
-
     left_titles = int(
         left_profile.get("titles") or 0
     )
@@ -409,59 +405,83 @@ def render_matchups(
         else "Titles"
     )
 
-    with header_left:
-        st.markdown(f"## {left_name}")
-        st.markdown(
-            (
-                "<div style='"
-                "font-size:1rem;"
-                "font-weight:600;"
-                "opacity:0.65;"
-                "'>"
-                f"#{left_rank or '–'} · "
-                f"{float(left_profile.get('current_elo') or 1000.0):.1f} Elo · "
-                f"{left_titles} {left_title_label}"
-                "</div>"
-            ),
-            unsafe_allow_html=True,
-        )
-
-    with header_score:
-        st.markdown(
-            (
-                "<div style='text-align:center;'>"
-                "<div style='font-size:0.9rem; opacity:0.7;'>"
-                "HEAD-TO-HEAD"
-                "</div>"
-                "<div style='font-size:2.5rem; font-weight:800;'>"
-                f"{h2h['player_a']['wins']} : "
-                f"{h2h['player_b']['wins']}"
-                "</div>"
-                "</div>"
-            ),
-            unsafe_allow_html=True,
-        )
-
-    with header_right:
-        st.markdown(
-            f"<h2 style='text-align:right;'>{right_name}</h2>",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            (
-                "<div style='"
-                "text-align:right;"
-                "font-size:1rem;"
-                "font-weight:600;"
-                "opacity:0.65;"
-                "'>"
-                f"#{right_rank or '–'} · "
-                f"{float(right_profile.get('current_elo') or 1000.0):.1f} Elo · "
-                f"{right_titles} {right_title_label}"
-                "</div>"
-            ),
-            unsafe_allow_html=True,
-        )
+    matchup_header_html = (
+        "<style>"
+        ".matchup-header-card {"
+        "display:grid;"
+        "grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);"
+        "align-items:center;"
+        "gap:1.25rem;"
+        "padding:1.25rem 1.4rem;"
+        "border:1px solid rgba(128,128,128,0.28);"
+        "border-radius:0.9rem 0.9rem 0 0;"
+        "}"
+        ".matchup-player-name {"
+        "font-size:2rem;"
+        "font-weight:800;"
+        "line-height:1.1;"
+        "}"
+        ".matchup-player-right {text-align:right;}"
+        ".matchup-player-meta {"
+        "margin-top:0.55rem;"
+        "font-size:0.88rem;"
+        "font-weight:650;"
+        "opacity:0.62;"
+        "}"
+        ".matchup-score {text-align:center;}"
+        ".matchup-score-label {"
+        "font-size:0.72rem;"
+        "font-weight:750;"
+        "letter-spacing:0.04em;"
+        "opacity:0.58;"
+        "}"
+        ".matchup-score-value {"
+        "margin-top:0.35rem;"
+        "font-size:2.5rem;"
+        "font-weight:850;"
+        "line-height:1;"
+        "white-space:nowrap;"
+        "}"
+        "@media (max-width:700px) {"
+        ".matchup-header-card {"
+        "gap:0.65rem;"
+        "padding:1rem 0.85rem;"
+        "}"
+        ".matchup-player-name {font-size:1.35rem;}"
+        ".matchup-player-meta {"
+        "font-size:0.72rem;"
+        "line-height:1.45;"
+        "}"
+        ".matchup-score-label {font-size:0.64rem;}"
+        ".matchup-score-value {font-size:1.9rem;}"
+        "}"
+        "</style>"
+        "<div class='matchup-header-card'>"
+        "<div class='matchup-player'>"
+        "<div class='matchup-player-name'>"
+        f"{html.escape(left_name)}"
+        "</div>"
+        "<div class='matchup-player-meta'>"
+        f"#{left_rank or '–'} · "
+        f"{float(left_profile.get('current_elo') or 1000.0):.1f} Elo<br>"
+        f"{left_titles} {html.escape(left_title_label)}"
+        "</div></div>"
+        "<div class='matchup-score'>"
+        "<div class='matchup-score-label'>HEAD-TO-HEAD</div>"
+        "<div class='matchup-score-value'>"
+        f"{h2h['player_a']['wins']} : {h2h['player_b']['wins']}"
+        "</div></div>"
+        "<div class='matchup-player matchup-player-right'>"
+        "<div class='matchup-player-name'>"
+        f"{html.escape(right_name)}"
+        "</div>"
+        "<div class='matchup-player-meta'>"
+        f"#{right_rank or '–'} · "
+        f"{float(right_profile.get('current_elo') or 1000.0):.1f} Elo<br>"
+        f"{right_titles} {html.escape(right_title_label)}"
+        "</div></div></div>"
+    )
+    st.markdown(matchup_header_html, unsafe_allow_html=True)
 
     categories = [
         (
@@ -479,7 +499,7 @@ def render_matchups(
             lambda value: str(value),
         ),
         (
-            "Match Wins",
+            "Set Wins",
             left_profile.get("wins", 0),
             right_profile.get("wins", 0),
             False,
@@ -511,20 +531,31 @@ def render_matchups(
     last_match = h2h.get("last_match")
 
     if last_match:
-        last_result = (
-            last_match.get("score")
-            or "Unknown result"
+        last_winner = str(
+            last_match.get("winner") or "Unknown"
         )
-
-        last_meeting = (
-            f"{last_match.get('winner') or 'Unknown'} "
-            f"{last_result}"
+        last_score = last_match.get("score")
+        if last_score and "-" in str(last_score):
+            left_score, right_score = str(last_score).split("-", 1)
+            winner_score, loser_score = (
+                (right_score, left_score)
+                if last_winner == right_name
+                else (left_score, right_score)
+            )
+            last_meeting = (
+                f"{last_winner} won {winner_score}–{loser_score}"
+            )
+        else:
+            last_meeting = f"{last_winner} won"
+        last_meeting_context = str(
+            last_match.get("tournament") or "Unknown tournament"
         )
     else:
         last_meeting = "–"
+        last_meeting_context = "No previous meeting"
 
     streak_player = "–"
-    streak_text = "–"
+    streak_count = 0
 
     recent_history = list(
         reversed(h2h.get("history") or [])
@@ -545,7 +576,6 @@ def render_matchups(
 
         if latest_winner:
             streak_player = str(latest_winner)
-            streak_text = f"W{streak_count}"
 
     rivalry_summary = (
         narratives.generate_rivalry_summary(h2h)
@@ -571,42 +601,146 @@ def render_matchups(
             )
         )
 
-    st.info(
-        " ".join(summary_parts)
+    rivalry_summary_html = (
+        "<style>"
+        ".rivalry-summary {"
+        "display:grid;"
+        "grid-template-columns:8rem minmax(0,1fr);"
+        "gap:1.5rem;"
+        "align-items:start;"
+        "padding:1.25rem 1.45rem;"
+        "margin:0 0 1rem 0;"
+        "border:1px solid rgba(70,150,220,0.18);"
+        "border-top:none;"
+        "border-radius:0 0 0.8rem 0.8rem;"
+        "background:rgba(28,74,112,0.55);"
+        "}"
+        ".rivalry-summary-label {"
+        "padding-top:0.15rem;"
+        "font-size:0.78rem;"
+        "font-weight:750;"
+        "letter-spacing:0.04em;"
+        "opacity:0.72;"
+        "}"
+        ".rivalry-summary-text {"
+        "font-size:1rem;"
+        "line-height:1.75;"
+        "}"
+        "@media (max-width:700px) {"
+        ".rivalry-summary {"
+        "grid-template-columns:1fr;"
+        "gap:0.75rem;"
+        "padding:1.15rem 1.25rem;"
+        "}"
+        "}"
+        "</style>"
+        "<div class='rivalry-summary'>"
+        "<div class='rivalry-summary-label'>"
+        "RIVALRY<br>SUMMARY"
+        "</div>"
+        "<div class='rivalry-summary-text'>"
+        f"{html.escape(' '.join(summary_parts))}"
+        "</div></div>"
+    )
+    st.markdown(
+        rivalry_summary_html,
+        unsafe_allow_html=True,
     )
 
     tab_overview, tab_history, tab_matches = st.tabs(
         [
             "Overview",
             "Elo & Ranking",
-            "Match History",
+            "Set History",
         ]
     )
 
     with tab_overview:
         st.subheader("Head-to-Head Details")
-
-        detail_cols = st.columns(3)
-
-        detail_cols[0].metric(
-            "Games Record",
-            (
-                f"{h2h['player_a']['games_won']}–"
-                f"{h2h['player_b']['games_won']}"
-            ),
+        detail_html = (
+            "<style>"
+            ".matchup-detail-grid {"
+            "display:grid;"
+            "grid-template-columns:repeat(3,minmax(0,1fr));"
+            "overflow:hidden;"
+            "border:1px solid rgba(128,128,128,0.28);"
+            "border-radius:0.8rem;"
+            "}"
+            ".matchup-detail-item {"
+            "min-width:0;"
+            "padding:1rem 1.1rem;"
+            "border-left:1px solid rgba(128,128,128,0.22);"
+            "}"
+            ".matchup-detail-item:first-child {border-left:none;}"
+            ".matchup-detail-label {"
+            "font-size:0.72rem;"
+            "font-weight:750;"
+            "letter-spacing:0.04em;"
+            "opacity:0.58;"
+            "text-transform:uppercase;"
+            "}"
+            ".matchup-detail-value {"
+            "margin-top:0.45rem;"
+            "font-size:1.35rem;"
+            "font-weight:800;"
+            "line-height:1.2;"
+            "}"
+            ".matchup-detail-note {"
+            "margin-top:0.25rem;"
+            "font-size:0.78rem;"
+            "font-weight:700;"
+            "opacity:0.58;"
+            "}"
+            "@media (max-width:700px) {"
+            ".matchup-detail-grid {grid-template-columns:1fr;}"
+            ".matchup-detail-item {"
+            "display:grid;"
+            "grid-template-columns:minmax(0,1fr) auto;"
+            "align-items:center;"
+            "gap:0.25rem 1rem;"
+            "padding:0.9rem 1rem;"
+            "border-left:none;"
+            "border-top:1px solid rgba(128,128,128,0.22);"
+            "}"
+            ".matchup-detail-item:first-child {border-top:none;}"
+            ".matchup-detail-value {"
+            "grid-column:2;"
+            "grid-row:1 / 3;"
+            "margin-top:0;"
+            "font-size:1.2rem;"
+            "text-align:right;"
+            "}"
+            ".matchup-detail-note {margin-top:0;}"
+            "}"
+            "</style>"
+        "<div class='matchup-detail-grid'>"
+        "<div class='matchup-detail-item'>"
+        "<div class='matchup-detail-label'>Games Won</div>"
+        "<div class='matchup-detail-value'>"
+        f"{h2h['player_a']['games_won']}–{h2h['player_b']['games_won']}"
+        "</div>"
+        "<div class='matchup-detail-note'>"
+        f"{html.escape(left_name)} – {html.escape(right_name)}"
+        "</div></div>"
+        "<div class='matchup-detail-item'>"
+        "<div class='matchup-detail-label'>Current Set Streak</div>"
+        "<div class='matchup-detail-value'>"
+        f"{html.escape(streak_player)} · "
+        f"{streak_count} {'win' if streak_count == 1 else 'wins'}"
+        "</div>"
+        "<div class='matchup-detail-note'>"
+        "Consecutive set wins"
+        "</div></div>"
+        "<div class='matchup-detail-item'>"
+        "<div class='matchup-detail-label'>Last Meeting</div>"
+        "<div class='matchup-detail-value'>"
+        f"{html.escape(last_meeting)}"
+        "</div>"
+        "<div class='matchup-detail-note'>"
+        f"{html.escape(last_meeting_context)}"
+        "</div></div></div>"
         )
-
-        detail_cols[1].metric(
-            "Current Streak",
-            streak_player,
-            streak_text,
-            delta_color="off",
-        )
-
-        detail_cols[2].metric(
-            "Last Meeting",
-            last_meeting,
-        )
+        st.markdown(detail_html, unsafe_allow_html=True)
 
         st.subheader("Career Comparison")
 
@@ -926,8 +1060,10 @@ def render_matchups(
                     columns="1fr 1fr 1.5fr 1.2fr 0.7fr",
                     emphasis_column=3,
                     cell_links=match_links,
+                    mobile_cards=True,
+                    mobile_card_variant="match-history",
                 ),
                 unsafe_allow_html=True,
             )
         else:
-            st.info("No head-to-head matches available.")
+            st.info("No head-to-head sets available.")

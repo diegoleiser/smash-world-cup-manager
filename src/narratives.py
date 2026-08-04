@@ -548,12 +548,12 @@ def generate_tournament_summary(
     if wins_leader and wins_total:
         if wins_leader == winner:
             sentences.append(
-                f"The champion also recorded the most match wins "
+                f"The champion also recorded the most set wins "
                 f"with {wins_total}."
             )
         else:
             sentences.append(
-                f"{wins_leader} recorded the most match wins "
+                f"{wins_leader} recorded the most set wins "
                 f"with {wins_total}."
             )
 
@@ -604,7 +604,7 @@ def generate_tournament_summary(
 
     context_parts = [
         f"{participant_count} players competed across "
-        f"{match_count} recorded matches"
+        f"{match_count} recorded sets"
     ]
 
     if close_sets:
@@ -786,7 +786,7 @@ def generate_tournament_preview(
             sentences.append(
                 f"The favourite also carries the strongest recent set record, "
                 f"winning {best_form_wins} of the last "
-                f"{best_form_matches} matches."
+                f"{best_form_matches} recorded sets."
             )
         else:
             sentences.append(

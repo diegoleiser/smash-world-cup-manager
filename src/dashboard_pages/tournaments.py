@@ -277,14 +277,14 @@ def _archived_tournament_header_html(
         <div class="archive-tournament-meta">
           <span>{tournament_date}</span>
           <span>{len(participants)} Participants</span>
-          <span>{match_count} Matches</span>
+          <span>{match_count} Sets</span>
         </div>
       </div>
       <div class="archive-podium">{''.join(podium_items)}</div>
       <div class="archive-tournament-desktop-meta">
         <span>{tournament_date}</span>
         <span>{len(participants)} Participants</span>
-        <span>{match_count} Matches</span>
+        <span>{match_count} Sets</span>
       </div>
     </div>
     """
@@ -583,23 +583,12 @@ def _archived_group_tables(
         )["standings"]
         rows = []
         for standing in standings:
-            game_difference = (
-                int(standing["games_won"])
-                - int(standing["games_lost"])
-            )
-            if game_difference > 0:
-                difference_text = f"▲ +{game_difference}"
-            elif game_difference < 0:
-                difference_text = f"▼ {game_difference}"
-            else:
-                difference_text = "= 0"
             rows.append(
                 [
                     f"#{int(standing['placement'])}",
                     str(standing["player"]),
                     f"{standing['sets_won']}–{standing['sets_lost']}",
                     f"{standing['games_won']}–{standing['games_lost']}",
-                    difference_text,
                 ]
             )
 
@@ -790,23 +779,23 @@ def render_tournaments(
                             "Player",
                             "Set Record",
                             "Game Record",
-                            "Game Diff",
                         ],
                         table["rows"],
                         columns=(
                             "minmax(4.5rem,0.5fr) minmax(10rem,1.5fr) "
-                            "minmax(7rem,0.8fr) minmax(7rem,0.8fr) "
-                            "minmax(6rem,0.7fr)"
+                            "minmax(7rem,0.8fr) minmax(7rem,0.8fr)"
                         ),
                         row_highlights=table["highlights"],
                         cell_links=table["links"],
                         emphasis_column=1,
+                        mobile_cards=True,
+                        mobile_card_variant="standings",
                     ),
                     unsafe_allow_html=True,
                 )
 
             st.divider()
-            st.subheader("Group Matches")
+            st.subheader("Group Sets")
             st.markdown(
                 dashboard_table_html(
                     ["Round", "Set", "Result", "Winner"],
@@ -826,6 +815,8 @@ def render_tournaments(
                         if match.get("winner_id") is not None
                     },
                     emphasis_column=1,
+                    mobile_cards=True,
+                    mobile_card_variant="tournament-match",
                 ),
                 unsafe_allow_html=True,
             )
@@ -852,6 +843,8 @@ def render_tournaments(
                     for row_index, participant in enumerate(participants)
                 },
                 emphasis_column=1,
+                mobile_cards=True,
+                mobile_card_variant="final-standings",
             ),
             unsafe_allow_html=True,
         )
@@ -948,7 +941,7 @@ def render_tournaments(
 
             st.caption(
                 "Archived bracket reconstructed from "
-                "Challonge round and match data."
+                "Challonge round and set data."
             )
 
         else:
@@ -959,7 +952,7 @@ def render_tournaments(
 
         if bracket_phase_matches:
             st.divider()
-            st.subheader("Bracket Matches")
+            st.subheader("Bracket Sets")
             st.markdown(
                 dashboard_table_html(
                     ["Round", "Set", "Result", "Winner"],
@@ -979,32 +972,98 @@ def render_tournaments(
                         if match.get("winner_id") is not None
                     },
                     emphasis_column=1,
+                    mobile_cards=True,
+                    mobile_card_variant="tournament-match",
                 ),
                 unsafe_allow_html=True,
             )
         elif not matches:
-            st.info("No match data is stored for this tournament.")
+            st.info("No set data is stored for this tournament.")
 
     with tab_elo:
         if changes:
             biggest_gain = changes[0]
             biggest_loss = changes[-1]
-            metric_cols = st.columns(3)
-            metric_cols[0].metric(
-                "Biggest Elo Gain",
-                biggest_gain["Players"],
-                f"{biggest_gain['Elo Change']:+.1f}",
+            elo_summary_html = (
+                "<style>"
+                ".archive-elo-summary {"
+                "display:grid;"
+                "grid-template-columns:repeat(3,minmax(0,1fr));"
+                "overflow:hidden;"
+                "margin-bottom:1rem;"
+                "border:1px solid rgba(128,128,128,0.28);"
+                "border-radius:0.8rem;"
+                "}"
+                ".archive-elo-summary-item {"
+                "padding:1rem 1.1rem;"
+                "border-left:1px solid rgba(128,128,128,0.22);"
+                "}"
+                ".archive-elo-summary-item:first-child {border-left:none;}"
+                ".archive-elo-summary-label {"
+                "font-size:0.72rem;"
+                "font-weight:750;"
+                "letter-spacing:0.04em;"
+                "opacity:0.58;"
+                "text-transform:uppercase;"
+                "}"
+                ".archive-elo-summary-value {"
+                "margin-top:0.4rem;"
+                "font-size:1.3rem;"
+                "font-weight:800;"
+                "}"
+                ".archive-elo-summary-change {"
+                "margin-top:0.2rem;"
+                "font-size:0.82rem;"
+                "font-weight:750;"
+                "}"
+                ".archive-elo-positive {color:#3fb950;}"
+                ".archive-elo-negative {color:#f85149;}"
+                "@media (max-width:700px) {"
+                ".archive-elo-summary {grid-template-columns:1fr;}"
+                ".archive-elo-summary-item {"
+                "display:grid;"
+                "grid-template-columns:minmax(0,1fr) auto;"
+                "align-items:center;"
+                "gap:0.2rem 1rem;"
+                "padding:0.9rem 1rem;"
+                "border-top:1px solid rgba(128,128,128,0.22);"
+                "border-left:none;"
+                "}"
+                ".archive-elo-summary-item:first-child {border-top:none;}"
+                ".archive-elo-summary-value {"
+                "grid-column:2;"
+                "grid-row:1 / 3;"
+                "margin-top:0;"
+                "font-size:1.2rem;"
+                "text-align:right;"
+                "}"
+                ".archive-elo-summary-change {margin-top:0;}"
+                "}"
+                "</style>"
+                "<div class='archive-elo-summary'>"
+                "<div class='archive-elo-summary-item'>"
+                "<div class='archive-elo-summary-label'>Biggest Elo Gain</div>"
+                "<div class='archive-elo-summary-value'>"
+                f"{html.escape(str(biggest_gain['Players']))}"
+                "</div>"
+                "<div class='archive-elo-summary-change archive-elo-positive'>"
+                f"{float(biggest_gain['Elo Change']):+.1f}"
+                "</div></div>"
+                "<div class='archive-elo-summary-item'>"
+                "<div class='archive-elo-summary-label'>Biggest Elo Loss</div>"
+                "<div class='archive-elo-summary-value'>"
+                f"{html.escape(str(biggest_loss['Players']))}"
+                "</div>"
+                "<div class='archive-elo-summary-change archive-elo-negative'>"
+                f"{float(biggest_loss['Elo Change']):+.1f}"
+                "</div></div>"
+                "<div class='archive-elo-summary-item'>"
+                "<div class='archive-elo-summary-label'>Elo Changes</div>"
+                "<div class='archive-elo-summary-value'>"
+                f"{len(changes)} Players"
+                "</div></div></div>"
             )
-            metric_cols[1].metric(
-                "Biggest Elo Loss",
-                biggest_loss["Players"],
-                f"{biggest_loss['Elo Change']:-.1f}",
-                delta_color="normal",
-            )
-            metric_cols[2].metric(
-                "Elo Changes",
-                len(changes),
-            )
+            st.markdown(elo_summary_html, unsafe_allow_html=True)
 
             change_df = pd.DataFrame(changes)
             change_chart = (
@@ -1070,6 +1129,8 @@ def render_tournaments(
                         for row_index, change in enumerate(changes)
                     },
                     emphasis_column=0,
+                    mobile_cards=True,
+                    mobile_card_variant="elo-change",
                 ),
                 unsafe_allow_html=True,
             )
@@ -1102,6 +1163,8 @@ def render_tournaments(
                                 for row_index, row in enumerate(snapshot)
                             },
                             emphasis_column=1,
+                            mobile_cards=True,
+                            mobile_card_variant="elo-ranking",
                         ),
                         unsafe_allow_html=True,
                     )

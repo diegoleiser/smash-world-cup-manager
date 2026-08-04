@@ -670,8 +670,8 @@ def load_tournaments() -> list[dict[str, Any]]:
             "Winner": row["winner"] or "Unknown",
             "Winner ID": row["winner_id"],
             "Participants": row["participants"] or 0,
-            "Matches": row["matches"] or 0,
-            "Match data": "Yes" if row["match_data_available"] else "No",
+            "Sets": row["matches"] or 0,
+            "Set data": "Yes" if row["match_data_available"] else "No",
         }
         for row in rows
     ]
@@ -934,7 +934,7 @@ def show_matchups(include_inactive: bool) -> None:
     )
 
 @st.dialog(
-    "Archived Match",
+    "Archived Set",
     width="medium",
     dismissible=False,
 )
@@ -1047,7 +1047,7 @@ def show_tournaments(include_inactive: bool) -> None:
 
 
 @st.dialog(
-    "Edit Bracket Match",
+    "Edit Bracket Set",
     width="medium",
 )
 def show_bracket_match_dialog(
@@ -1150,7 +1150,7 @@ def show_bracket_match_dialog(
 
     if match_status == "waiting":
         st.info(
-            "This match is waiting for players from earlier rounds."
+            "This set is waiting for players from earlier rounds."
         )
         return
 
@@ -1244,7 +1244,7 @@ def show_bracket_match_dialog(
             if result_type == "Played":
                 if player_1_score == player_2_score:
                     st.error(
-                        "A played match cannot end in a tie."
+                        "A played set cannot end in a tie."
                     )
                     return
 
@@ -1307,7 +1307,7 @@ def show_bracket_match_dialog(
             st.success("Result: W–L")
 
         elif match_status == "cancelled":
-            st.info("This match was cancelled.")
+            st.info("This set was cancelled.")
 
         if match["winner_name"]:
             st.write(
@@ -1316,7 +1316,7 @@ def show_bracket_match_dialog(
 
         st.warning(
             "Resetting this result also clears dependent "
-            "later bracket matches."
+            "later bracket sets."
         )
 
         confirm_reset = st.checkbox(
