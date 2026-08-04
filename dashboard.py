@@ -688,6 +688,169 @@ def load_tournament_milestones(
     )
 
 
+@st.cache_data
+def load_tournament_story_context(
+    tournament_number: int,
+) -> dict[str, Any]:
+    """Load cross-tournament context for an archived event recap."""
+
+    with stats.connect_db(DB_PATH) as connection:
+        tournament_rows = connection.execute(
+            """
+            SELECT
+                t.tournament_number,
+                t.winner_id,
+                winner.display_name AS winner
+            FROM tournaments AS t
+            LEFT JOIN players AS winner
+              ON winner.player_id = t.winner_id
+            WHERE t.tournament_number <= ?
+            ORDER BY t.tournament_number DESC
+            """,
+            (tournament_number,),
+        ).fetchall()
+        appearance_rows = connection.execute(
+            """
+            SELECT
+                t.tournament_number,
+                tp.player_id,
+                p.display_name AS player,
+                tp.placement
+            FROM tournament_participants AS tp
+            JOIN tournaments AS t
+              ON t.tournament_id = tp.tournament_id
+            JOIN players AS p
+              ON p.player_id = tp.player_id
+            WHERE t.tournament_number <= ?
+            ORDER BY t.tournament_number DESC
+            """,
+            (tournament_number,),
+        ).fetchall()
+
+    if not tournament_rows:
+        return {}
+
+    current_tournament = tournament_rows[0]
+    current_winner_id = current_tournament["winner_id"]
+    appearance_entries = [dict(row) for row in appearance_rows]
+    appearances_by_player: dict[str, list[dict[str, Any]]] = {}
+    current_appearances: dict[str, dict[str, Any]] = {}
+    for entry in appearance_entries:
+        player_id = str(entry["player_id"])
+        appearances_by_player.setdefault(player_id, []).append(entry)
+        if int(entry["tournament_number"]) == tournament_number:
+            current_appearances[player_id] = entry
+
+    previous_tournament = (
+        dict(tournament_rows[1])
+        if len(tournament_rows) >= 2
+        else None
+    )
+    previous_placements = {
+        player_id: rows[1]
+        for player_id, rows in appearances_by_player.items()
+        if len(rows) >= 2
+        and int(rows[0]["tournament_number"]) == tournament_number
+    }
+
+    title_streak = 0
+    for row in tournament_rows:
+        if row["winner_id"] != current_winner_id:
+            break
+        title_streak += 1
+
+    previous_title = next(
+        (
+            dict(row)
+            for row in tournament_rows[1:]
+            if row["winner_id"] == current_winner_id
+        ),
+        None,
+    )
+
+    podium_streak = 0
+    if current_winner_id is not None:
+        for row in appearances_by_player.get(str(current_winner_id), []):
+            placement = row.get("placement")
+            if placement is None or int(placement) > 3:
+                break
+            podium_streak += 1
+
+    biggest_improvement = None
+    for player_id, current in current_appearances.items():
+        previous = previous_placements.get(player_id)
+        if (
+            current.get("placement") is None
+            or previous is None
+            or previous.get("placement") is None
+        ):
+            continue
+        improvement = int(previous["placement"]) - int(current["placement"])
+        if improvement < 2:
+            continue
+        candidate = {
+            "player": str(current["player"]),
+            "current_placement": int(current["placement"]),
+            "previous_placement": int(previous["placement"]),
+            "previous_tournament": int(previous["tournament_number"]),
+            "improvement": improvement,
+        }
+        if (
+            biggest_improvement is None
+            or improvement > biggest_improvement["improvement"]
+        ):
+            biggest_improvement = candidate
+
+    current_finalists = {
+        str(row["player"]): int(row["placement"])
+        for row in current_appearances.values()
+        if row.get("placement") in {1, 2}
+    }
+    previous_finalists = {}
+    if previous_tournament:
+        previous_number = int(previous_tournament["tournament_number"])
+        previous_finalists = {
+            str(row["player"]): int(row["placement"])
+            for row in appearance_entries
+            if int(row["tournament_number"]) == previous_number
+            and row.get("placement") in {1, 2}
+        }
+
+    repeat_final = (
+        {
+            "previous_tournament": int(
+                previous_tournament["tournament_number"]
+            ),
+            "previous_winner": str(previous_tournament["winner"]),
+        }
+        if previous_tournament
+        and set(current_finalists) == set(previous_finalists)
+        and len(current_finalists) == 2
+        else None
+    )
+    defending_champion_result = None
+    if previous_tournament and previous_tournament.get("winner_id") is not None:
+        defending_champion_result = current_appearances.get(
+            str(previous_tournament["winner_id"])
+        )
+
+    return {
+        "previous_tournament": previous_tournament,
+        "previous_placements": previous_placements,
+        "winner_previous_placement": (
+            previous_placements.get(str(current_winner_id))
+            if current_winner_id is not None
+            else None
+        ),
+        "winner_title_streak": title_streak,
+        "winner_podium_streak": podium_streak,
+        "previous_title": previous_title,
+        "biggest_placement_improvement": biggest_improvement,
+        "repeat_final": repeat_final,
+        "defending_champion_result": defending_champion_result,
+    }
+
+
 def format_percent(value: float | None) -> str:
     return "–" if value is None else f"{value:.1f} %"
 
@@ -1040,6 +1203,7 @@ def show_tournaments(include_inactive: bool) -> None:
         load_tournaments=load_tournaments,
         load_tournament_detail=load_tournament_detail,
         load_tournament_milestones=load_tournament_milestones,
+        load_tournament_story_context=load_tournament_story_context,
         tournament_elo_changes=tournament_elo_changes,
         format_ordinal=format_ordinal,
         show_archived_match_dialog=show_archived_match_dialog,

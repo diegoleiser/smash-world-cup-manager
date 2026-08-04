@@ -581,25 +581,20 @@ def render_matchups(
         narratives.generate_rivalry_summary(h2h)
     )
 
-    summary_parts = [
-        rivalry_summary,
+    summary_sentences = [
+        sentence.strip()
+        for sentence in rivalry_summary.split(". ")
+        if sentence.strip()
     ]
-
-    if last_match:
-        score = (
-            last_match.get("score")
-            or "Unknown result"
+    summary_paragraphs = []
+    for index in range(0, len(summary_sentences), 2):
+        paragraph = ". ".join(summary_sentences[index:index + 2])
+        if not paragraph.endswith("."):
+            paragraph += "."
+        summary_paragraphs.append(
+            f"<p>{html.escape(paragraph)}</p>"
         )
-
-        summary_parts.append(
-            (
-                f"Last meeting: "
-                f"{last_match.get('winner') or 'Unknown'} "
-                f"won at "
-                f"{last_match.get('tournament') or 'an unknown tournament'} "
-                f"({score})."
-            )
-        )
+    rivalry_summary_text_html = "".join(summary_paragraphs)
 
     rivalry_summary_html = (
         "<style>"
@@ -626,6 +621,8 @@ def render_matchups(
         "font-size:1rem;"
         "line-height:1.75;"
         "}"
+        ".rivalry-summary-text p {margin:0 0 0.9rem;}"
+        ".rivalry-summary-text p:last-child {margin-bottom:0;}"
         "@media (max-width:700px) {"
         ".rivalry-summary {"
         "grid-template-columns:1fr;"
@@ -639,7 +636,7 @@ def render_matchups(
         "RIVALRY<br>SUMMARY"
         "</div>"
         "<div class='rivalry-summary-text'>"
-        f"{html.escape(' '.join(summary_parts))}"
+        f"{rivalry_summary_text_html}"
         "</div></div>"
     )
     st.markdown(
