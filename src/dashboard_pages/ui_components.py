@@ -101,17 +101,21 @@ def up_next_matchup_html(
 ) -> str:
     """Return the shared live-control header for the next playable set."""
 
-    probability_html = (
-        '<div style="display:grid;grid-template-columns:1fr 1fr;'
-        'gap:2rem;margin:0.45rem 0 0.1rem;opacity:0.65;'
-        'font-size:0.82rem;">'
+    probability_content = (
         '<div style="text-align:right;">'
         f"{player_1_probability:.1%} win chance"
         '</div><div style="text-align:left;">'
         f"{1.0 - player_1_probability:.1%} win chance"
-        "</div></div>"
+        "</div>"
         if player_1_probability is not None
         else ""
+    )
+    probability_html = (
+        '<div style="display:grid;grid-template-columns:1fr 1fr;'
+        'gap:2rem;margin:0.45rem 0 0.1rem;opacity:0.65;'
+        'font-size:0.82rem;min-height:1.25rem;">'
+        f"{probability_content}"
+        "</div>"
     )
     return (
         '<div style="text-align:center;opacity:0.68;'

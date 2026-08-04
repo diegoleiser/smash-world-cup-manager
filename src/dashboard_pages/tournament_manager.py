@@ -388,6 +388,7 @@ def _render_group_control_center(
     standings: list[dict[str, Any]],
     artifact_path: Path,
     player_names: dict[str, str],
+    show_win_probabilities: bool,
 ) -> None:
     """Render the live Group Stage dashboard."""
 
@@ -484,7 +485,11 @@ def _render_group_control_center(
                         ),
                         str(selected["player_1"]),
                         str(selected["player_2"]),
-                        player_1_probability=player_1_probability,
+                        player_1_probability=(
+                            player_1_probability
+                            if show_win_probabilities
+                            else None
+                        ),
                     ),
                     unsafe_allow_html=True,
                 )
@@ -562,15 +567,14 @@ def _render_group_control_center(
                     row_highlights[row_index] = "winners"
                 elif player_status == "Losers Locked":
                     row_highlights[row_index] = "losers"
-                rows.append([
-                        str(player["placement"]),
-                        str(player["player"]),
-                        (
-                            f"{player['sets_won']}–{player['sets_lost']}"
-                        ),
-                        (
-                            f"{player['games_won']}–{player['games_lost']}"
-                        ),
+                row = [
+                    str(player["placement"]),
+                    str(player["player"]),
+                    f"{player['sets_won']}–{player['sets_lost']}",
+                    f"{player['games_won']}–{player['games_lost']}",
+                ]
+                if show_win_probabilities:
+                    row.append(
                         (
                             format_winners_probability(
                                 player_forecast.winners_probability,
@@ -578,28 +582,27 @@ def _render_group_control_center(
                             )
                             if player_forecast is not None
                             else "—"
-                        ),
-                        player_status,
-                    ]
-                )
+                        )
+                    )
+                row.append(player_status)
+                rows.append(row)
             with column:
                 st.markdown(f"#### {group['group_name']}")
+                headers = ["#", "Player", "Sets", "Games"]
+                columns_css = (
+                    "2.5rem minmax(7rem,1.5fr) "
+                    "minmax(4rem,0.65fr) minmax(4rem,0.65fr) "
+                )
+                if show_win_probabilities:
+                    headers.append("P(Winners)")
+                    columns_css += "minmax(6rem,0.8fr) "
+                headers.append("Status")
+                columns_css += "minmax(7rem,1fr)"
                 st.markdown(
                     dashboard_table_html(
-                        [
-                            "#",
-                            "Player",
-                            "Sets",
-                            "Games",
-                            "P(Winners)",
-                            "Status",
-                        ],
+                        headers,
                         rows,
-                        columns=(
-                            "2.5rem minmax(7rem,1.5fr) "
-                            "minmax(4rem,0.65fr) minmax(4rem,0.65fr) "
-                            "minmax(6rem,0.8fr) minmax(7rem,1fr)"
-                        ),
+                        columns=columns_css,
                         row_highlights=row_highlights,
                         emphasis_column=1,
                     ),
@@ -657,6 +660,7 @@ def _render_bracket_control_center(
     player_names: dict[str, str],
     show_bracket_match_dialog: Callable[..., None],
     load_finalization_preview: Callable[[str], dict[str, Any]],
+    show_win_probabilities: bool,
 ) -> None:
     """Render ready actions around the live Bracket visualization."""
 
@@ -868,7 +872,11 @@ def _render_bracket_control_center(
                         ),
                         str(chosen["player_1_name"]),
                         str(chosen["player_2_name"]),
-                        player_1_probability=player_1_probability,
+                        player_1_probability=(
+                            player_1_probability
+                            if show_win_probabilities
+                            else None
+                        ),
                     ),
                     unsafe_allow_html=True,
                 )
@@ -958,7 +966,8 @@ def _render_bracket_control_center(
         if selected_match is not None:
             dialog_match = dict(selected_match)
             selected_forecast = forecast_by_code.get(str(open_code))
-            if selected_forecast is not None:
+            probability_key = f"dialog_bracket_probability_{open_code}"
+            if selected_forecast is not None and show_win_probabilities:
                 player_1_win_probability = (
                     selected_forecast.player_1_win_probability
                     if (
@@ -970,9 +979,9 @@ def _render_bracket_control_center(
                 dialog_match["player_1_win_probability"] = (
                     player_1_win_probability
                 )
-                st.session_state[
-                    f"dialog_bracket_probability_{open_code}"
-                ] = player_1_win_probability
+                st.session_state[probability_key] = player_1_win_probability
+            else:
+                st.session_state.pop(probability_key, None)
             show_bracket_match_dialog(dialog_match, dialog_key)
 
 
@@ -1237,6 +1246,16 @@ def render_tournament_manager(
     )
     if control_center_active:
         st.markdown("## Tournament Control Center")
+        show_win_probabilities = st.toggle(
+            "Show win probabilities",
+            value=True,
+            key=f"show_win_probabilities_{selected_draft_id}",
+            help=(
+                "Show predictive percentages in the Control Center. "
+                "Turning this off does not change tournament results "
+                "or calculations."
+            ),
+        )
         show_detailed_management = st.toggle(
             "Show detailed management",
             value=False,
@@ -1263,6 +1282,7 @@ def render_tournament_manager(
                 standings=group_standings,
                 artifact_path=model_artifact_path,
                 player_names=forecast_player_names,
+                show_win_probabilities=show_win_probabilities,
             )
             group_complete = all(
                 str(match["status"]) != "pending"
@@ -1308,6 +1328,7 @@ def render_tournament_manager(
                 load_finalization_preview=(
                     load_tournament_draft_finalization_preview
                 ),
+                show_win_probabilities=show_win_probabilities,
             )
             st.caption(
                 "Use “Show detailed management” for complete Set lists, "

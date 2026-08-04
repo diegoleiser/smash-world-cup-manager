@@ -276,6 +276,7 @@ class TournamentControlCenterTests(unittest.TestCase):
             "Player 2",
         )
         self.assertNotIn("win chance", markup_without_probability)
+        self.assertIn("min-height:1.25rem", markup_without_probability)
 
     def test_compact_score_styles_preserve_shared_and_optional_states(
         self,
