@@ -5,6 +5,53 @@ from __future__ import annotations
 import html
 
 
+def mobile_seeding_styles() -> str:
+    """Keep seeding controls in one compact row on narrow screens."""
+
+    return """
+    <style>
+    div[class*="st-key-mobile_seeding_row_"] {
+        max-width: 46rem;
+        padding: 0.28rem 0;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.18);
+    }
+    div[class*="st-key-mobile_seeding_row_"]
+    [data-testid="stHorizontalBlock"] {
+        display: grid !important;
+        grid-template-columns: 3.5rem minmax(10rem, 1fr) 2.4rem 2.4rem;
+        gap: 0.55rem !important;
+        align-items: center;
+    }
+    div[class*="st-key-mobile_seeding_row_"]
+    [data-testid="stColumn"] {
+        width: auto !important;
+        min-width: 0 !important;
+    }
+    div[class*="st-key-mobile_seeding_row_"]
+    [data-testid="stMarkdownContainer"] p {
+        margin: 0;
+    }
+    div[class*="st-key-mobile_seeding_row_"] .stButton button {
+        width: 2.4rem;
+        min-height: 2.25rem;
+        padding: 0;
+    }
+    @media (max-width: 700px) {
+        div[class*="st-key-mobile_seeding_row_"] {
+            max-width: none;
+        }
+        div[class*="st-key-mobile_seeding_row_"]
+        [data-testid="stHorizontalBlock"] {
+            display: grid !important;
+            grid-template-columns: 2.5rem minmax(0, 1fr) 2.4rem 2.4rem;
+            gap: 0.4rem !important;
+            align-items: center;
+        }
+    }
+    </style>
+    """
+
+
 def internal_dashboard_link(
     label: str,
     href: str,

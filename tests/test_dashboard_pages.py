@@ -47,6 +47,7 @@ from dashboard_pages.ui_components import (  # noqa: E402
     internal_dashboard_link,
     compact_score_input_styles,
     dashboard_table_html,
+    mobile_seeding_styles,
     up_next_matchup_html,
 )
 
@@ -609,6 +610,24 @@ class TournamentControlCenterTests(unittest.TestCase):
             [match["group_match_id"] for match in ready],
             ["pending"],
         )
+
+
+class TournamentManagerPageTests(unittest.TestCase):
+    def test_mobile_seeding_keeps_rank_player_and_actions_in_one_row(
+        self,
+    ) -> None:
+        styles = mobile_seeding_styles()
+
+        self.assertIn("@media (max-width: 700px)", styles)
+        self.assertIn("st-key-mobile_seeding_row_", styles)
+        self.assertIn("grid-template-columns", styles)
+        self.assertIn("max-width: 46rem", styles)
+        self.assertIn(
+            "3.5rem minmax(10rem, 1fr) 2.4rem 2.4rem",
+            styles,
+        )
+        self.assertIn("2.5rem minmax(0, 1fr) 2.4rem 2.4rem", styles)
+        self.assertIn("width: 2.4rem", styles)
 
 
 class TournamentPageTests(unittest.TestCase):

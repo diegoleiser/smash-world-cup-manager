@@ -17,6 +17,7 @@ from dashboard_pages.ui_components import (
     clickable_card_button_styles,
     compact_score_input_styles,
     dashboard_table_html,
+    mobile_seeding_styles,
     up_next_matchup_html,
 )
 from monte_carlo.artifacts import ArtifactError, load_artifact
@@ -1727,6 +1728,11 @@ def render_tournament_manager(
                 "Use the arrows to fine-tune the order."
             )
 
+            st.markdown(
+                mobile_seeding_styles(),
+                unsafe_allow_html=True,
+            )
+
             ordered_participants = sorted(
                 draft["participants"],
                 key=lambda participant: (
@@ -1763,33 +1769,36 @@ def render_tournament_manager(
             for index, player_id in enumerate(current_order):
                 participant = participant_by_id[player_id]
 
-                seed_col, player_col, up_col, down_col = st.columns(
-                    [1, 6, 1, 1]
-                )
+                with st.container(
+                    key=f"mobile_seeding_row_{selected_draft_id}_{player_id}"
+                ):
+                    seed_col, player_col, up_col, down_col = st.columns(
+                        [1, 6, 1, 1]
+                    )
 
-                seed_col.markdown(f"**#{index + 1}**")
-                player_col.write(participant["player"])
+                    seed_col.markdown(f"**#{index + 1}**")
+                    player_col.write(participant["player"])
 
-                move_up = up_col.button(
-                    "↑",
-                    key=(
-                        f"move_up_{selected_draft_id}_"
-                        f"{player_id}"
-                    ),
-                    disabled=setup_locked or index == 0,
-                )
+                    move_up = up_col.button(
+                        "↑",
+                        key=(
+                            f"move_up_{selected_draft_id}_"
+                            f"{player_id}"
+                        ),
+                        disabled=setup_locked or index == 0,
+                    )
 
-                move_down = down_col.button(
-                    "↓",
-                    key=(
-                        f"move_down_{selected_draft_id}_"
-                        f"{player_id}"
-                    ),
-                    disabled=(
-                        setup_locked
-                        or index == len(current_order) - 1
-                    ),
-                )
+                    move_down = down_col.button(
+                        "↓",
+                        key=(
+                            f"move_down_{selected_draft_id}_"
+                            f"{player_id}"
+                        ),
+                        disabled=(
+                            setup_locked
+                            or index == len(current_order) - 1
+                        ),
+                    )
 
                 if move_up:
                     current_order[index - 1], current_order[index] = (
