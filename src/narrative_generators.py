@@ -1146,28 +1146,34 @@ def generate_tournament_summary(
         )
 
     # General tournament context
-    close_sets = _count_close_sets(matches)
-    participant_count = len(participants)
-    match_count = len(matches)
-    recorded_set_label = "set" if match_count == 1 else "sets"
+    if not participants and not matches:
+        sentences.append(
+            "Detailed participant and set records are not available for "
+            "this tournament."
+        )
+    else:
+        close_sets = _count_close_sets(matches)
+        participant_count = len(participants)
+        match_count = len(matches)
+        recorded_set_label = "set" if match_count == 1 else "sets"
 
-    context_sentence = (
-        f"{participant_count} players competed across "
-        f"{match_count} recorded {recorded_set_label}"
-    )
-
-    if close_sets:
-        set_word = "set" if close_sets == 1 else "sets"
-        verb = "was" if close_sets == 1 else "were"
-        context_sentence += (
-            f"; {close_sets} {set_word} {verb} decided by a single game"
+        context_sentence = (
+            f"{participant_count} players competed across "
+            f"{match_count} recorded {recorded_set_label}"
         )
 
-    if third_place:
-        connector = ", while" if close_sets else ";"
-        context_sentence += f"{connector} {third_place} finished third"
+        if close_sets:
+            set_word = "set" if close_sets == 1 else "sets"
+            verb = "was" if close_sets == 1 else "were"
+            context_sentence += (
+                f"; {close_sets} {set_word} {verb} decided by a single game"
+            )
 
-    sentences.append(context_sentence + ".")
+        if third_place:
+            connector = ", while" if close_sets else ";"
+            context_sentence += f"{connector} {third_place} finished third"
+
+        sentences.append(context_sentence + ".")
 
     selected_milestone = _select_milestone(milestones)
     if selected_milestone:

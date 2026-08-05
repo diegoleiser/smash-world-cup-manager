@@ -332,6 +332,22 @@ class DashboardNarrativeConsistencyTests(unittest.TestCase):
         self.assertIn("1 recorded set; 1 set was decided", summary)
         self.assertNotIn(", with Gamma finishing third", summary)
 
+    def test_tournament_recap_explains_missing_archive_details(self) -> None:
+        summary = narratives.generate_tournament_summary(
+            {"tournament_number": 3, "winner": "Diego"},
+            [],
+            [],
+            [],
+            winner_title_number=1,
+        )
+
+        self.assertIn("Diego won WC 03", summary)
+        self.assertIn(
+            "Detailed participant and set records are not available",
+            summary,
+        )
+        self.assertNotIn("0 players competed", summary)
+
     def test_tournament_recap_prioritizes_extended_event_storylines(
         self,
     ) -> None:

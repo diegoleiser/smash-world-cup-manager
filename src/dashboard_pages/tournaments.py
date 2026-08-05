@@ -160,6 +160,9 @@ def _archived_tournament_header_html(
                 )
             )
 
+    if not podium_players[1] and tournament.get("winner"):
+        podium_players[1].append((str(tournament["winner"]), None))
+
     podium_items = []
     for placement, icon, label in (
         (1, "🥇", "Champion"),
@@ -188,6 +191,16 @@ def _archived_tournament_header_html(
 
     tournament_number = int(tournament["tournament_number"])
     tournament_date = html.escape(str(tournament.get("tournament_date") or "–"))
+    participant_label = (
+        f"{len(participants)} Participants"
+        if participants
+        else "Participants unavailable"
+    )
+    set_label = (
+        f"{match_count} Sets"
+        if match_count
+        else "Set data unavailable"
+    )
     return f"""
     <style>
     .archive-tournament-card {{
@@ -333,15 +346,15 @@ def _archived_tournament_header_html(
         </div>
         <div class="archive-tournament-meta">
           <span>{tournament_date}</span>
-          <span>{len(participants)} Participants</span>
-          <span>{match_count} Sets</span>
+          <span>{participant_label}</span>
+          <span>{set_label}</span>
         </div>
       </div>
       <div class="archive-podium">{''.join(podium_items)}</div>
       <div class="archive-tournament-desktop-meta">
         <span>{tournament_date}</span>
-        <span>{len(participants)} Participants</span>
-        <span>{match_count} Sets</span>
+        <span>{participant_label}</span>
+        <span>{set_label}</span>
       </div>
     </div>
     """
@@ -887,37 +900,42 @@ def render_tournaments(
             )
 
     with tab_overview:
-        st.subheader("Final Standings")
-        standings_rows, standings_highlights = _final_standings_table_data(
-            participants,
-            format_ordinal,
-        )
-        st.markdown(
-            dashboard_table_html(
-                ["Placement", "Player", "Initial Seed", "Seed Change"],
-                standings_rows,
-                columns=(
-                    "minmax(7rem,0.85fr) minmax(12rem,2fr) "
-                    "minmax(7rem,0.8fr) minmax(7rem,0.75fr)"
+        if not participants:
+            st.info(
+                "No final standings data is available for this tournament."
+            )
+        else:
+            st.subheader("Final Standings")
+            standings_rows, standings_highlights = _final_standings_table_data(
+                participants,
+                format_ordinal,
+            )
+            st.markdown(
+                dashboard_table_html(
+                    ["Placement", "Player", "Initial Seed", "Seed Change"],
+                    standings_rows,
+                    columns=(
+                        "minmax(7rem,0.85fr) minmax(12rem,2fr) "
+                        "minmax(7rem,0.8fr) minmax(7rem,0.75fr)"
+                    ),
+                    row_highlights=standings_highlights,
+                    cell_links={
+                        (row_index, 1): player_profile_url(
+                            str(participant["player_id"])
+                        )
+                        for row_index, participant in enumerate(participants)
+                    },
+                    emphasis_column=1,
+                    mobile_cards=True,
+                    mobile_card_variant="final-standings",
                 ),
-                row_highlights=standings_highlights,
-                cell_links={
-                    (row_index, 1): player_profile_url(
-                        str(participant["player_id"])
-                    )
-                    for row_index, participant in enumerate(participants)
-                },
-                emphasis_column=1,
-                mobile_cards=True,
-                mobile_card_variant="final-standings",
-            ),
-            unsafe_allow_html=True,
-        )
+                unsafe_allow_html=True,
+            )
 
-        st.caption(
-            "▲ finished above the initial seed · "
-            "▼ finished below the initial seed"
-        )
+            st.caption(
+                "▲ finished above the initial seed · "
+                "▼ finished below the initial seed"
+            )
 
     with tab_bracket:
         archived_bracket_routes = (
