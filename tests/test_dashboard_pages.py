@@ -27,6 +27,7 @@ from dashboard_pages.player import (  # noqa: E402
     _player_selector_styles,
 )
 from dashboard_pages.tournament_control_center import (  # noqa: E402
+    finalization_standings_table_data,
     group_ready_matches,
 )
 from dashboard_pages.tournaments import (  # noqa: E402
@@ -46,7 +47,11 @@ from dashboard_pages.ui_components import (  # noqa: E402
     clickable_card_button_styles,
     internal_dashboard_link,
     compact_score_input_styles,
+    compact_metric_strip_html,
     dashboard_table_html,
+    format_optional_percentage,
+    mobile_control_center_card_styles,
+    mobile_seeding_styles,
     up_next_matchup_html,
 )
 
@@ -609,6 +614,136 @@ class TournamentControlCenterTests(unittest.TestCase):
             [match["group_match_id"] for match in ready],
             ["pending"],
         )
+
+
+class TournamentManagerPageTests(unittest.TestCase):
+    def test_final_standings_data_is_shared_between_manager_views(self) -> None:
+        rows, highlights = finalization_standings_table_data([
+            {
+                "placement": 1,
+                "player": "Alpha",
+                "initial_seed": 3,
+                "elo_after": 1120.0,
+                "elo_change": 20.0,
+            },
+            {
+                "placement": 2,
+                "player": "Beta",
+                "initial_seed": 1,
+                "elo_after": 1088.5,
+                "elo_change": -11.5,
+            },
+        ])
+
+        self.assertEqual(rows[0], [
+            "🥇 1st", "Alpha", "Seed #3", "▲ 2", "1120.0 (+20.0)",
+        ])
+        self.assertEqual(rows[1][3], "▼ 1")
+        self.assertEqual(highlights, {0: "winners"})
+
+    def test_pending_group_percentages_are_rendered_as_unavailable(self) -> None:
+        self.assertEqual(format_optional_percentage(None), "–")
+        self.assertEqual(format_optional_percentage(62.45), "62.5%")
+
+    def test_mobile_seeding_keeps_rank_player_and_actions_in_one_row(
+        self,
+    ) -> None:
+        styles = mobile_seeding_styles()
+
+        self.assertIn("@media (max-width: 700px)", styles)
+        self.assertIn("st-key-mobile_seeding_row_", styles)
+        self.assertIn("grid-template-columns", styles)
+        self.assertIn("max-width: 46rem", styles)
+        self.assertIn(
+            "3.5rem minmax(10rem, 1fr) 2.4rem 2.4rem",
+            styles,
+        )
+        self.assertIn("2.5rem minmax(0, 1fr) 2.4rem 2.4rem", styles)
+        self.assertIn("width: 2.4rem", styles)
+
+    def test_group_ranking_has_a_dedicated_mobile_layout(self) -> None:
+        markup = dashboard_table_html(
+            [
+                "Seed", "Player", "Group", "Group Place",
+                "Set Win %", "Game Win %", "Bracket",
+            ],
+            [["1", "Alpha", "Group A", "1", "–", "–", "Winners"]],
+            columns="repeat(7, minmax(5rem, 1fr))",
+            mobile_cards=True,
+            mobile_card_variant="group-ranking",
+        )
+
+        self.assertIn("control-table-mobile-group-ranking", markup)
+        self.assertIn('data-label="Bracket"', markup)
+
+    def test_compact_metric_strip_keeps_three_values_together(self) -> None:
+        markup = compact_metric_strip_html([
+            ("Bracket Size", 8),
+            ("Winners Bracket", 4),
+            ("Losers Bracket", 3),
+        ])
+
+        self.assertIn("--compact-metric-columns:3", markup)
+        self.assertIn("var(--compact-metric-columns)", markup)
+        self.assertIn("Bracket Size", markup)
+        self.assertIn("Winners Bracket", markup)
+        self.assertIn("Losers Bracket", markup)
+
+        forecast_markup = compact_metric_strip_html([
+            ("W1M1", "Diego · 74%", "win chance vs Gianni"),
+        ])
+        self.assertIn("Diego · 74%", forecast_markup)
+        self.assertIn("win chance vs Gianni", forecast_markup)
+        self.assertIn("compact-metric-strip-note", forecast_markup)
+
+        finalization_markup = compact_metric_strip_html(
+            [("Champion", "Diego"), ("Participants", 7)],
+            mobile_columns=2,
+        )
+        self.assertIn(
+            "--compact-metric-mobile-columns:2",
+            finalization_markup,
+        )
+
+    def test_control_center_cards_release_fixed_height_on_mobile(self) -> None:
+        styles = mobile_control_center_card_styles()
+
+        self.assertIn("@media (max-width: 700px)", styles)
+        self.assertIn("st-key-control_center_equal_card_", styles)
+        self.assertIn("height: auto !important", styles)
+        self.assertIn("overflow: visible !important", styles)
+        self.assertIn("margin-top: 1.25rem", styles)
+
+    def test_all_sets_has_a_dedicated_mobile_layout(self) -> None:
+        markup = dashboard_table_html(
+            ["Group", "Round", "Set", "Status", "Result"],
+            [["Group A", "1", "Alpha vs Beta", "Pending", "—"]],
+            columns="repeat(5, minmax(5rem, 1fr))",
+            mobile_cards=True,
+            mobile_card_variant="control-sets",
+        )
+
+        self.assertIn("control-table-mobile-control-sets", markup)
+        self.assertIn('data-label="Set"', markup)
+
+    def test_remaining_manager_tables_have_mobile_card_layouts(self) -> None:
+        forecast = dashboard_table_html(
+            ["Player", "P(GF)", "P(Title)"],
+            [["Alpha", "70.0%", "40.0%"]],
+            columns="repeat(3, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="title-forecast",
+        )
+        participants = dashboard_table_html(
+            ["Player", "Initial Seed", "Starts In"],
+            [["Alpha", "1", "Winners"]],
+            columns="repeat(3, 1fr)",
+            mobile_cards=True,
+            mobile_card_variant="participants",
+        )
+
+        self.assertIn("control-table-mobile-title-forecast", forecast)
+        self.assertIn("control-table-mobile-participants", participants)
 
 
 class TournamentPageTests(unittest.TestCase):

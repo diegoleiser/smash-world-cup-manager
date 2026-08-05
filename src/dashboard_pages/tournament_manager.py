@@ -12,11 +12,18 @@ import streamlit as st
 import bracket_visualization
 import tournament_manager
 from dashboard_pages.forecast_format import format_winners_probability
-from dashboard_pages.tournament_control_center import group_ready_matches
+from dashboard_pages.tournament_control_center import (
+    finalization_standings_table_data,
+    group_ready_matches,
+)
 from dashboard_pages.ui_components import (
     clickable_card_button_styles,
+    compact_metric_strip_html,
     compact_score_input_styles,
     dashboard_table_html,
+    format_optional_percentage,
+    mobile_control_center_card_styles,
+    mobile_seeding_styles,
     up_next_matchup_html,
 )
 from monte_carlo.artifacts import ArtifactError, load_artifact
@@ -86,34 +93,37 @@ def _render_live_group_forecast(
         st.caption(f"Forecast unavailable: {exc}")
         return
     rows = [
-        {
-            "Player": player.display_name,
-            "Current": (
-                f"{player.current_sets_won}–{player.current_sets_lost}"
-            ),
-            "Projected Wins": player.expected_final_sets_won,
-            "P(Winners)": format_winners_probability(
+        [
+            player.display_name,
+            f"{player.current_sets_won}–{player.current_sets_lost}",
+            f"{player.expected_final_sets_won:.2f}",
+            format_winners_probability(
                 player.winners_probability,
                 player.winners_status,
             ),
-            "Status": player.winners_status,
-        }
+            player.winners_status,
+        ]
         for player in sorted(
             forecast.players,
             key=lambda item: item.winners_probability,
             reverse=True,
         )
     ]
-    st.dataframe(
-        pd.DataFrame(rows),
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Projected Wins": st.column_config.NumberColumn(format="%.2f"),
-        },
+    st.markdown(
+        dashboard_table_html(
+            ["Player", "Current", "Projected Wins", "P(Winners)", "Status"],
+            rows,
+            columns=(
+                "minmax(9rem,1.4fr) minmax(5rem,0.7fr) "
+                "minmax(7rem,0.9fr) minmax(7rem,0.9fr) minmax(7rem,1fr)"
+            ),
+            emphasis_column=0,
+            mobile_cards=True,
+            mobile_card_variant="forecast",
+        ),
+        unsafe_allow_html=True,
     )
     if forecast.match_leverage:
-        st.markdown("#### Open-Set Leverage")
         leverage_rows = []
         for match in forecast.match_leverage:
             first_swing = (
@@ -125,42 +135,38 @@ def _render_live_group_forecast(
                 - match.player_2_winners_if_loss
             )
             leverage_rows.append(
-                {
-                    "Set": (
+                (
+                    max(first_swing, second_swing),
+                    [
                         f"{player_names.get(match.player_1_id, match.player_1_id)} "
-                        f"vs {player_names.get(match.player_2_id, match.player_2_id)}"
-                    ),
-                    "Set Probability": (
-                        match.player_1_set_win_probability * 100
-                    ),
-                    "P1 Winners Swing": first_swing * 100,
-                    "P2 Winners Swing": second_swing * 100,
-                    "_importance": max(first_swing, second_swing),
-                }
+                        f"vs {player_names.get(match.player_2_id, match.player_2_id)}",
+                        f"{match.player_1_set_win_probability * 100:.1f}%",
+                        f"+{first_swing * 100:.1f}%",
+                        f"+{second_swing * 100:.1f}%",
+                    ],
+                )
             )
-        leverage_frame = (
-            pd.DataFrame(leverage_rows)
-            .sort_values("_importance", ascending=False)
-            .drop(columns="_importance")
-            .head(5)
-        )
-        st.dataframe(
-            leverage_frame,
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "Set Probability": st.column_config.NumberColumn(
-                    "P(first player wins)",
-                    format="%.1f%%",
+        sorted_leverage_rows = [
+            row
+            for _, row in sorted(
+                leverage_rows,
+                key=lambda item: item[0],
+                reverse=True,
+            )[:5]
+        ]
+        with st.expander("Open-Set Leverage", expanded=False):
+            st.markdown(
+                dashboard_table_html(
+                    ["Set", "P(first wins)", "P1 Swing", "P2 Swing"],
+                    sorted_leverage_rows,
+                    columns=(
+                        "minmax(11rem,1.7fr) repeat(3,minmax(7rem,1fr))"
+                    ),
+                    emphasis_column=0,
+                    mobile_cards=True,
                 ),
-                "P1 Winners Swing": st.column_config.NumberColumn(
-                    format="+%.1f%%",
-                ),
-                "P2 Winners Swing": st.column_config.NumberColumn(
-                    format="+%.1f%%",
-                ),
-            },
-        )
+                unsafe_allow_html=True,
+            )
     st.caption(
         "10'000 simulations · completed results fixed · remaining Group "
         "Sets use frozen pre-tournament strengths · provisional UI"
@@ -192,43 +198,68 @@ def _render_live_bracket_forecast(
         st.caption(f"Forecast unavailable: {exc}")
         return
     if forecast.ready_matches:
-        match_columns = st.columns(min(3, len(forecast.ready_matches)))
-        for column, match in zip(
-            match_columns,
-            forecast.ready_matches[:3],
-        ):
-            column.metric(
-                match.match_code,
-                (
-                    f"{player_names.get(match.player_1_id, match.player_1_id)} "
-                    f"{match.player_1_win_probability:.0%}"
-                ),
-                help=(
-                    f"Probability that "
-                    f"{player_names.get(match.player_1_id, match.player_1_id)} "
-                    "wins this Set."
-                ),
+        st.caption(
+            "Win probabilities for the next three ready Sets. "
+            "Each card shows the current favourite."
+        )
+        forecast_metrics = []
+        for match in forecast.ready_matches[:3]:
+            player_1_name = player_names.get(
+                match.player_1_id,
+                match.player_1_id,
             )
+            player_2_name = player_names.get(
+                match.player_2_id,
+                match.player_2_id,
+            )
+            if match.player_1_win_probability >= 0.5:
+                favourite = player_1_name
+                opponent = player_2_name
+                favourite_probability = match.player_1_win_probability
+            else:
+                favourite = player_2_name
+                opponent = player_1_name
+                favourite_probability = 1.0 - match.player_1_win_probability
+            forecast_metrics.append(
+                (
+                    str(match.match_code),
+                    f"{favourite} · {favourite_probability:.0%}",
+                    f"win chance vs {opponent}",
+                )
+            )
+        st.markdown(
+            compact_metric_strip_html(forecast_metrics),
+            unsafe_allow_html=True,
+        )
     rows = [
-        {
-            "Player": player_names.get(player.player_id, player.player_id),
-            "P(GF)": player.grand_final_probability * 100,
-            "P(Title)": player.title_probability * 100,
-        }
+        [
+            str(player_names.get(player.player_id, player.player_id)),
+            f"{player.grand_final_probability * 100:.1f}%",
+            f"{player.title_probability * 100:.1f}%",
+        ]
         for player in sorted(
             forecast.players,
             key=lambda item: item.title_probability,
             reverse=True,
         )
     ]
-    st.dataframe(
-        pd.DataFrame(rows),
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "P(GF)": st.column_config.NumberColumn(format="%.1f%%"),
-            "P(Title)": st.column_config.NumberColumn(format="%.1f%%"),
-        },
+    st.caption(
+        "P(GF) is the probability of reaching the Grand Final; "
+        "P(Title) is the probability of winning the tournament."
+    )
+    st.markdown(
+        dashboard_table_html(
+            ["Player", "P(GF)", "P(Title)"],
+            rows,
+            columns=(
+                "minmax(10rem,1.6fr) minmax(6rem,0.8fr) "
+                "minmax(6rem,0.8fr)"
+            ),
+            emphasis_column=0,
+            mobile_cards=True,
+            mobile_card_variant="title-forecast",
+        ),
+        unsafe_allow_html=True,
     )
     st.caption(
         "10'000 simulations · completed Bracket Sets fixed · Day values "
@@ -282,16 +313,6 @@ def _match_option_label(match: dict[str, Any]) -> str:
         else f"{match['round_label']} · "
     )
     return f"{group}{player_1_name} vs {player_2_name}"
-
-
-def _ordinal(value: int) -> str:
-    """Return a compact English ordinal label."""
-
-    if 10 <= value % 100 <= 20:
-        suffix = "th"
-    else:
-        suffix = {1: "st", 2: "nd", 3: "rd"}.get(value % 10, "th")
-    return f"{value}{suffix}"
 
 
 def _render_group_quick_result(
@@ -426,6 +447,10 @@ def _render_group_control_center(
     )
 
     if ready:
+        st.markdown(
+            mobile_control_center_card_styles(),
+            unsafe_allow_html=True,
+        )
         option_by_label = {
             _match_option_label(match): match for match in ready
         }
@@ -476,7 +501,11 @@ def _render_group_control_center(
                         )
                         else 1.0 - leverage.player_1_set_win_probability
                     )
-            with st.container(border=True, height=card_height):
+            with st.container(
+                border=True,
+                height=card_height,
+                key=f"control_center_equal_card_group_action_{draft_id}",
+            ):
                 st.markdown(
                     up_next_matchup_html(
                         (
@@ -501,45 +530,58 @@ def _render_group_control_center(
                 )
         if alternatives_column is not None:
             with alternatives_column:
-                st.markdown("### Other Playable Sets")
-                alternative_labels = [
-                    label
-                    for label in option_by_label
-                    if label != selected_label
-                ]
-                visible_alternatives = alternative_labels[:4]
-                with st.container(border=True, height=card_height):
-                    st.markdown(
-                        clickable_card_button_styles(
-                            "control_choose_group_",
-                            show_focus_ring=True,
+                with st.container(
+                    key=(
+                        "control_center_alternatives_section_group_"
+                        f"{draft_id}"
+                    )
+                ):
+                    st.markdown("### Other Playable Sets")
+                    alternative_labels = [
+                        label
+                        for label in option_by_label
+                        if label != selected_label
+                    ]
+                    visible_alternatives = alternative_labels[:4]
+                    with st.container(
+                        border=True,
+                        height=card_height,
+                        key=(
+                            "control_center_equal_card_group_alternatives_"
+                            f"{draft_id}"
                         ),
-                        unsafe_allow_html=True,
-                    )
-                    for label in visible_alternatives:
-                        match = option_by_label[label]
-                        if st.button(
-                            (
-                                f"**{match['player_1']}  vs  "
-                                f"{match['player_2']}**  \n"
-                                f"{match['group_name']} · "
-                                f"Round {match['round_number']}  →"
+                    ):
+                        st.markdown(
+                            clickable_card_button_styles(
+                                "control_choose_group_",
+                                show_focus_ring=True,
                             ),
-                            key=(
-                                "control_choose_group_"
-                                f"{match['group_match_id']}"
-                            ),
-                            width="stretch",
-                        ):
-                            st.session_state[choice_key] = label
-                            st.rerun()
-                    remaining_count = len(alternative_labels) - len(
-                        visible_alternatives
-                    )
-                    if remaining_count:
-                        st.caption(
-                            f"{remaining_count} more under All Sets"
+                            unsafe_allow_html=True,
                         )
+                        for label in visible_alternatives:
+                            match = option_by_label[label]
+                            if st.button(
+                                (
+                                    f"**{match['player_1']}  vs  "
+                                    f"{match['player_2']}**  \n"
+                                    f"{match['group_name']} · "
+                                    f"Round {match['round_number']}  →"
+                                ),
+                                key=(
+                                    "control_choose_group_"
+                                    f"{match['group_match_id']}"
+                                ),
+                                width="stretch",
+                            ):
+                                st.session_state[choice_key] = label
+                                st.rerun()
+                        remaining_count = len(alternative_labels) - len(
+                            visible_alternatives
+                        )
+                        if remaining_count:
+                            st.caption(
+                                f"{remaining_count} more under All Sets"
+                            )
     else:
         st.success("All Group Sets are decided.")
 
@@ -588,7 +630,7 @@ def _render_group_control_center(
                 rows.append(row)
             with column:
                 st.markdown(f"#### {group['group_name']}")
-                headers = ["#", "Player", "Sets", "Games"]
+                headers = ["Rank", "Player", "Set Record", "Game Record"]
                 columns_css = (
                     "2.5rem minmax(7rem,1.5fr) "
                     "minmax(4rem,0.65fr) minmax(4rem,0.65fr) "
@@ -605,6 +647,8 @@ def _render_group_control_center(
                         columns=columns_css,
                         row_highlights=row_highlights,
                         emphasis_column=1,
+                        mobile_cards=True,
+                        mobile_card_variant="control-standings",
                     ),
                     unsafe_allow_html=True,
                 )
@@ -646,6 +690,8 @@ def _render_group_control_center(
                     "minmax(5rem,0.65fr)"
                 ),
                 emphasis_column=2,
+                mobile_cards=True,
+                mobile_card_variant="control-sets",
             ),
             unsafe_allow_html=True,
         )
@@ -692,45 +738,11 @@ def _render_bracket_control_center(
             st.warning(str(exc))
         else:
             st.markdown("### Final Standings")
-            placements = finalization_preview["placements"]
-            placement_counts: dict[int, int] = {}
-            for placement in placements:
-                placement_value = int(placement["placement"])
-                placement_counts[placement_value] = (
-                    placement_counts.get(placement_value, 0) + 1
+            placement_rows, placement_highlights = (
+                finalization_standings_table_data(
+                    finalization_preview["placements"]
                 )
-            medal_by_placement = {
-                1: "🥇",
-                2: "🥈",
-                3: "🥉",
-            }
-            placement_rows = []
-            for placement in placements:
-                placement_value = int(placement["placement"])
-                initial_seed = int(placement["initial_seed"])
-                elo_after = float(placement["elo_after"])
-                elo_change = float(placement["elo_change"])
-                placement_rows.append(
-                    [
-                        (
-                            f"{medal_by_placement.get(placement_value, '')} "
-                            f"{'T-' if placement_counts[placement_value] > 1 else ''}"
-                            f"{_ordinal(placement_value)}"
-                        ).strip(),
-                        str(placement["player"]),
-                        f"Seed #{initial_seed}",
-                        (
-                            f"▲ {initial_seed - placement_value}"
-                            if initial_seed > placement_value
-                            else (
-                                f"▼ {placement_value - initial_seed}"
-                                if initial_seed < placement_value
-                                else "= Seed"
-                            )
-                        ),
-                        f"{elo_after:.1f} ({elo_change:+.1f})",
-                    ]
-                )
+            )
             st.markdown(
                 dashboard_table_html(
                     [
@@ -746,8 +758,10 @@ def _render_bracket_control_center(
                         "minmax(7rem,0.75fr) minmax(7rem,0.7fr) "
                         "minmax(8rem,0.85fr)"
                     ),
-                    row_highlights={0: "winners"},
+                    row_highlights=placement_highlights,
                     emphasis_column=1,
+                    mobile_cards=True,
+                    mobile_card_variant="finalization-standings",
                 ),
                 unsafe_allow_html=True,
             )
@@ -830,6 +844,10 @@ def _render_bracket_control_center(
             pass
 
     if ready:
+        st.markdown(
+            mobile_control_center_card_styles(),
+            unsafe_allow_html=True,
+        )
         option_by_label = {
             _match_option_label(match): match for match in ready
         }
@@ -863,7 +881,11 @@ def _render_bracket_control_center(
                     )
                     else 1.0 - chosen_forecast.player_1_win_probability
                 )
-            with st.container(border=True, height=card_height):
+            with st.container(
+                border=True,
+                height=card_height,
+                key=f"control_center_equal_card_bracket_action_{draft_id}",
+            ):
                 st.markdown(
                     up_next_matchup_html(
                         (
@@ -896,45 +918,58 @@ def _render_bracket_control_center(
                     st.rerun()
         if alternatives_column is not None:
             with alternatives_column:
-                st.markdown("### Other Ready Sets")
-                alternative_labels = [
-                    label
-                    for label in option_by_label
-                    if label != chosen_label
-                ]
-                with st.container(border=True, height=card_height):
-                    st.markdown(
-                        clickable_card_button_styles(
-                            "control_choose_bracket_",
-                            title_font_size="1.18rem",
+                with st.container(
+                    key=(
+                        "control_center_alternatives_section_bracket_"
+                        f"{draft_id}"
+                    )
+                ):
+                    st.markdown("### Other Ready Sets")
+                    alternative_labels = [
+                        label
+                        for label in option_by_label
+                        if label != chosen_label
+                    ]
+                    with st.container(
+                        border=True,
+                        height=card_height,
+                        key=(
+                            "control_center_equal_card_bracket_alternatives_"
+                            f"{draft_id}"
                         ),
-                        unsafe_allow_html=True,
-                    )
-                    for label in alternative_labels[:2]:
-                        match = option_by_label[label]
-                        if st.button(
-                            (
-                                f"**{match['player_1_name']}  vs  "
-                                f"{match['player_2_name']}**  \n"
-                                f"{match['round_label']} · "
-                                f"{match['match_code']}  →"
+                    ):
+                        st.markdown(
+                            clickable_card_button_styles(
+                                "control_choose_bracket_",
+                                title_font_size="1.18rem",
                             ),
-                            key=(
-                                "control_choose_bracket_"
-                                f"{match['bracket_match_id']}"
-                            ),
-                            width="stretch",
-                        ):
-                            st.session_state[choice_key] = label
-                            st.rerun()
-                    remaining_count = len(alternative_labels) - min(
-                        len(alternative_labels),
-                        2,
-                    )
-                    if remaining_count:
-                        st.caption(
-                            f"{remaining_count} more in the Live Bracket"
+                            unsafe_allow_html=True,
                         )
+                        for label in alternative_labels[:2]:
+                            match = option_by_label[label]
+                            if st.button(
+                                (
+                                    f"**{match['player_1_name']}  vs  "
+                                    f"{match['player_2_name']}**  \n"
+                                    f"{match['round_label']} · "
+                                    f"{match['match_code']}  →"
+                                ),
+                                key=(
+                                    "control_choose_bracket_"
+                                    f"{match['bracket_match_id']}"
+                                ),
+                                width="stretch",
+                            ):
+                                st.session_state[choice_key] = label
+                                st.rerun()
+                        remaining_count = len(alternative_labels) - min(
+                            len(alternative_labels),
+                            2,
+                        )
+                        if remaining_count:
+                            st.caption(
+                                f"{remaining_count} more in the Live Bracket"
+                            )
     elif not champion_name:
         st.info("No Bracket Set is ready. An earlier result is still required.")
 
@@ -1645,21 +1680,28 @@ def render_tournament_manager(
                     st.rerun()
 
         if draft["participants"]:
-            participant_rows = []
+            participant_rows: list[list[str]] = []
 
             for participant in draft["participants"]:
-                participant_rows.append(
-                    {
-                        "Player": participant["player"],
-                        "Initial Seed": participant["manual_seed"],
-                        "Starts In": participant["starts_in"].title(),
-                    }
-                )
+                participant_rows.append([
+                    str(participant["player"]),
+                    str(participant["manual_seed"]),
+                    str(participant["starts_in"]).title(),
+                ])
 
-            st.dataframe(
-                pd.DataFrame(participant_rows),
-                hide_index=True,
-                width="stretch",
+            st.markdown(
+                dashboard_table_html(
+                    ["Player", "Initial Seed", "Starts In"],
+                    participant_rows,
+                    columns=(
+                        "minmax(10rem,1.5fr) minmax(7rem,0.8fr) "
+                        "minmax(7rem,0.8fr)"
+                    ),
+                    emphasis_column=0,
+                    mobile_cards=True,
+                    mobile_card_variant="participants",
+                ),
+                unsafe_allow_html=True,
             )
 
             remove_player_by_name = {
@@ -1727,6 +1769,11 @@ def render_tournament_manager(
                 "Use the arrows to fine-tune the order."
             )
 
+            st.markdown(
+                mobile_seeding_styles(),
+                unsafe_allow_html=True,
+            )
+
             ordered_participants = sorted(
                 draft["participants"],
                 key=lambda participant: (
@@ -1763,33 +1810,36 @@ def render_tournament_manager(
             for index, player_id in enumerate(current_order):
                 participant = participant_by_id[player_id]
 
-                seed_col, player_col, up_col, down_col = st.columns(
-                    [1, 6, 1, 1]
-                )
+                with st.container(
+                    key=f"mobile_seeding_row_{selected_draft_id}_{player_id}"
+                ):
+                    seed_col, player_col, up_col, down_col = st.columns(
+                        [1, 6, 1, 1]
+                    )
 
-                seed_col.markdown(f"**#{index + 1}**")
-                player_col.write(participant["player"])
+                    seed_col.markdown(f"**#{index + 1}**")
+                    player_col.write(participant["player"])
 
-                move_up = up_col.button(
-                    "↑",
-                    key=(
-                        f"move_up_{selected_draft_id}_"
-                        f"{player_id}"
-                    ),
-                    disabled=setup_locked or index == 0,
-                )
+                    move_up = up_col.button(
+                        "↑",
+                        key=(
+                            f"move_up_{selected_draft_id}_"
+                            f"{player_id}"
+                        ),
+                        disabled=setup_locked or index == 0,
+                    )
 
-                move_down = down_col.button(
-                    "↓",
-                    key=(
-                        f"move_down_{selected_draft_id}_"
-                        f"{player_id}"
-                    ),
-                    disabled=(
-                        setup_locked
-                        or index == len(current_order) - 1
-                    ),
-                )
+                    move_down = down_col.button(
+                        "↓",
+                        key=(
+                            f"move_down_{selected_draft_id}_"
+                            f"{player_id}"
+                        ),
+                        disabled=(
+                            setup_locked
+                            or index == len(current_order) - 1
+                        ),
+                    )
 
                 if move_up:
                     current_order[index - 1], current_order[index] = (
@@ -2001,32 +2051,28 @@ def render_tournament_manager(
 
                                 if group["members"]:
                                     group_rows = [
-                                        {
-                                            "Position": member[
-                                                "group_position"
-                                            ],
-                                            "Initial Seed": member[
-                                                "manual_seed"
-                                            ],
-                                            "Player": member["player"],
-                                        }
+                                        [
+                                            str(member["group_position"]),
+                                            str(member["manual_seed"]),
+                                            str(member["player"]),
+                                        ]
                                         for member in group["members"]
                                     ]
 
-                                    st.dataframe(
-                                        pd.DataFrame(group_rows),
-                                        hide_index=True,
-                                        width="stretch",
-                                        column_config={
-                                            "Position":
-                                                st.column_config.NumberColumn(
-                                                    format="%d",
-                                                ),
-                                            "Initial Seed":
-                                                st.column_config.NumberColumn(
-                                                    format="%d",
-                                                ),
-                                        },
+                                    st.markdown(
+                                        dashboard_table_html(
+                                            ["Position", "Initial Seed", "Player"],
+                                            group_rows,
+                                            columns=(
+                                                "minmax(5rem,0.7fr) "
+                                                "minmax(6rem,0.8fr) "
+                                                "minmax(9rem,1.5fr)"
+                                            ),
+                                            emphasis_column=2,
+                                            mobile_cards=True,
+                                            mobile_card_variant="group-assignment",
+                                        ),
+                                        unsafe_allow_html=True,
                                     )
                                 else:
                                     st.info(
@@ -2171,7 +2217,7 @@ def render_tournament_manager(
                                     f"#### {group_standing['group_name']}"
                                 )
 
-                                standing_rows = []
+                                standing_rows: list[list[str]] = []
 
                                 for player in group_standing["standings"]:
                                     set_rate = (
@@ -2181,41 +2227,37 @@ def render_tournament_manager(
                                         player["game_win_percentage"]
                                     )
 
-                                    standing_rows.append(
-                                        {
-                                            "Pos.": player["placement"],
-                                            "Player": player["player"],
-                                            "Sets": (
-                                                f"{player['sets_won']}–"
-                                                f"{player['sets_lost']}"
-                                            ),
-                                            "Set Win %": set_rate,
-                                            "Games": (
-                                                f"{player['games_won']}–"
-                                                f"{player['games_lost']}"
-                                            ),
-                                            "Game Win %": game_rate,
-                                        }
-                                    )
+                                    standing_rows.append([
+                                        str(player["placement"]),
+                                        str(player["player"]),
+                                        f"{player['sets_won']}–{player['sets_lost']}",
+                                        format_optional_percentage(set_rate),
+                                        f"{player['games_won']}–{player['games_lost']}",
+                                        format_optional_percentage(game_rate),
+                                    ])
 
-                                st.dataframe(
-                                    pd.DataFrame(standing_rows),
-                                    hide_index=True,
-                                    width="stretch",
-                                    column_config={
-                                        "Pos.":
-                                            st.column_config.NumberColumn(
-                                                format="%d",
-                                            ),
-                                        "Set Win %":
-                                            st.column_config.NumberColumn(
-                                                format="%.1f %%",
-                                            ),
-                                        "Game Win %":
-                                            st.column_config.NumberColumn(
-                                                format="%.1f %%",
-                                            ),
-                                    },
+                                st.markdown(
+                                    dashboard_table_html(
+                                        [
+                                            "Rank", "Player", "Set Record", "Game Record",
+                                        ],
+                                        [
+                                            [
+                                                row[0], row[1],
+                                                f"{row[2]} · {row[3]}",
+                                                f"{row[4]} · {row[5]}",
+                                            ]
+                                            for row in standing_rows
+                                        ],
+                                        columns=(
+                                            "minmax(4rem,0.5fr) minmax(9rem,1.4fr) "
+                                            "repeat(2,minmax(7rem,0.9fr))"
+                                        ),
+                                        emphasis_column=1,
+                                        mobile_cards=True,
+                                        mobile_card_variant="standings",
+                                    ),
+                                    unsafe_allow_html=True,
                                 )
 
                                 st.caption(
@@ -2274,7 +2316,7 @@ def render_tournament_manager(
                                     "group sets are still pending."
                                 )
 
-                            global_ranking_rows = []
+                            global_ranking_rows: list[list[str]] = []
 
                             for player in global_ranking["ranking"]:
                                 set_rate = player[
@@ -2284,66 +2326,56 @@ def render_tournament_manager(
                                     "game_win_percentage"
                                 ]
 
-                                global_ranking_rows.append(
-                                    {
-                                        "Seed": player["global_seed"],
-                                        "Player": player["player"],
-                                        "Group": player["group_name"],
-                                        "Group Place": (
-                                            player["group_placement"]
-                                        ),
-                                        "Set Win %": set_rate,
-                                        "Game Win %": game_rate,
-                                        "Bracket": (
-                                            "Winners"
-                                            if player["starts_in"]
-                                            == "winners"
-                                            else "Losers"
-                                        ),
-                                    }
-                                )
+                                global_ranking_rows.append([
+                                    str(player["global_seed"]),
+                                    str(player["player"]),
+                                    str(player["group_name"]),
+                                    str(player["group_placement"]),
+                                    format_optional_percentage(set_rate),
+                                    format_optional_percentage(game_rate),
+                                    (
+                                        "Winners"
+                                        if player["starts_in"] == "winners"
+                                        else "Losers"
+                                    ),
+                                ])
 
-                            st.dataframe(
-                                pd.DataFrame(global_ranking_rows),
-                                hide_index=True,
-                                width="stretch",
-                                column_config={
-                                    "Seed":
-                                        st.column_config.NumberColumn(
-                                            format="%d",
-                                        ),
-                                    "Group Place":
-                                        st.column_config.NumberColumn(
-                                            format="%d",
-                                        ),
-                                    "Set Win %":
-                                        st.column_config.NumberColumn(
-                                            format="%.1f %%",
-                                        ),
-                                    "Game Win %":
-                                        st.column_config.NumberColumn(
-                                            format="%.1f %%",
-                                        ),
-                                },
+                            st.markdown(
+                                dashboard_table_html(
+                                    [
+                                        "Seed", "Player", "Group", "Group Place",
+                                        "Set Win %", "Game Win %", "Bracket",
+                                    ],
+                                    global_ranking_rows,
+                                    columns=(
+                                        "minmax(4rem,0.5fr) minmax(9rem,1.3fr) "
+                                        "minmax(5rem,0.7fr) minmax(6rem,0.8fr) "
+                                        "repeat(2,minmax(6rem,0.8fr)) "
+                                        "minmax(7rem,0.9fr)"
+                                    ),
+                                    emphasis_column=1,
+                                    mobile_cards=True,
+                                    mobile_card_variant="group-ranking",
+                                ),
+                                unsafe_allow_html=True,
                             )
 
-                            bracket_col_1, bracket_col_2, bracket_col_3 = (
-                                st.columns(3)
-                            )
-
-                            bracket_col_1.metric(
-                                "Bracket Size",
-                                global_ranking["bracket_size"],
-                            )
-
-                            bracket_col_2.metric(
-                                "Winners Bracket",
-                                global_ranking["winners_count"],
-                            )
-
-                            bracket_col_3.metric(
-                                "Losers Bracket",
-                                global_ranking["losers_count"],
+                            st.markdown(
+                                compact_metric_strip_html([
+                                    (
+                                        "Bracket Size",
+                                        global_ranking["bracket_size"],
+                                    ),
+                                    (
+                                        "Winners Bracket",
+                                        global_ranking["winners_count"],
+                                    ),
+                                    (
+                                        "Losers Bracket",
+                                        global_ranking["losers_count"],
+                                    ),
+                                ]),
+                                unsafe_allow_html=True,
                             )
 
                             st.caption(
@@ -2865,23 +2897,14 @@ def render_tournament_manager(
                 draft_bracket_state["played_set_count"]
             )
 
-            bracket_metrics = st.columns(4)
-
-            bracket_metrics[0].metric(
-                "Sets",
-                match_count,
-            )
-            bracket_metrics[1].metric(
-                "Ready",
-                ready_count,
-            )
-            bracket_metrics[2].metric(
-                "Waiting",
-                waiting_count,
-            )
-            bracket_metrics[3].metric(
-                "Played",
-                completed_count,
+            st.markdown(
+                compact_metric_strip_html([
+                    ("Sets", match_count),
+                    ("Ready", ready_count),
+                    ("Waiting", waiting_count),
+                    ("Played", completed_count),
+                ]),
+                unsafe_allow_html=True,
             )
 
             bracket_progress = (
@@ -2931,54 +2954,64 @@ def render_tournament_manager(
                 except ValueError as exc:
                     st.warning(str(exc))
                 else:
-                    finalization_cols = st.columns(4)
-
-                    finalization_cols[0].metric(
-                        "Champion",
-                        finalization_preview["champion_name"],
-                    )
-                    finalization_cols[1].metric(
-                        "Participants",
-                        finalization_preview["participant_count"],
-                    )
-                    finalization_cols[2].metric(
-                        "Sets to Archive",
-                        finalization_preview["matches_to_archive"],
-                    )
-                    finalization_cols[3].metric(
-                        "Tournament",
-                        (
-                            f"WC "
-                            f"{finalization_preview['tournament_number']:02d}"
+                    st.markdown(
+                        compact_metric_strip_html(
+                            [
+                                (
+                                    "Champion",
+                                    finalization_preview["champion_name"],
+                                ),
+                                (
+                                    "Participants",
+                                    finalization_preview["participant_count"],
+                                ),
+                                (
+                                    "Sets to Archive",
+                                    finalization_preview["matches_to_archive"],
+                                ),
+                                (
+                                    "Tournament",
+                                    f"WC {finalization_preview['tournament_number']:02d}",
+                                ),
+                            ],
+                            mobile_columns=2,
                         ),
+                        unsafe_allow_html=True,
                     )
 
-                    st.markdown("#### Final Placements")
+                    st.markdown("#### Final Standings")
 
-                    placement_rows = [
-                        {
-                            "Placement": placement["placement"],
-                            "Player": placement["player"],
-                            "Seed": placement["seed"],
-                        }
-                        for placement
-                        in finalization_preview["placements"]
-                    ]
+                    placement_rows, placement_highlights = (
+                        finalization_standings_table_data(
+                            finalization_preview["placements"]
+                        )
+                    )
 
-                    st.dataframe(
-                        pd.DataFrame(placement_rows),
-                        hide_index=True,
-                        width="stretch",
-                        column_config={
-                            "Placement":
-                                st.column_config.NumberColumn(
-                                    format="%d",
-                                ),
-                            "Seed":
-                                st.column_config.NumberColumn(
-                                    format="%d",
-                                ),
-                        },
+                    st.markdown(
+                        dashboard_table_html(
+                            [
+                                "Placement",
+                                "Player",
+                                "Initial Seed",
+                                "Seed Change",
+                                "Elo (Change)",
+                            ],
+                            placement_rows,
+                            columns=(
+                                "minmax(7rem,0.8fr) minmax(12rem,2fr) "
+                                "minmax(7rem,0.75fr) minmax(7rem,0.7fr) "
+                                "minmax(8rem,0.85fr)"
+                            ),
+                            row_highlights=placement_highlights,
+                            emphasis_column=1,
+                            mobile_cards=True,
+                            mobile_card_variant="finalization-standings",
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(
+                        "▲ finished above the initial seed · "
+                        "▼ finished below the initial seed"
                     )
 
                     if (
