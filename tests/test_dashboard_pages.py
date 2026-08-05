@@ -661,6 +661,25 @@ class TournamentPageTests(unittest.TestCase):
         self.assertNotIn("<Gamma>", markup)
         self.assertIn("@media (max-width: 700px)", markup)
 
+    def test_archived_tournament_header_explains_missing_detail_data(
+        self,
+    ) -> None:
+        markup = _archived_tournament_header_html(
+            {
+                "tournament_number": 3,
+                "tournament_date": "2022-08-28",
+                "winner": "Diego",
+            },
+            [],
+            0,
+        )
+
+        self.assertIn("Diego", markup)
+        self.assertIn("Participants unavailable", markup)
+        self.assertIn("Set data unavailable", markup)
+        self.assertNotIn("0 Participants", markup)
+        self.assertNotIn("0 Sets", markup)
+
     def test_phase_match_rows_omit_redundant_stage(self) -> None:
         rows = _phase_match_table_rows(
             [
